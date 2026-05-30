@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+
+  # ─── Ma'lumotlar bazasi ────────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: taxigo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taxigo_db
+      POSTGRES_USER: taxigo
+      POSTGRES_PASSWORD: taxigo123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taxigo -d taxigo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: taxigo_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend (FastAPI) ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: taxigo_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://taxigo:taxigo123@postgres:5432/taxigo_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-taxigo_super_secret_key_minimum_64_chars_xxxxxxxxxxxxxxxxxxxxxxxxxxx}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-taxigo_admin_secret_key_minimum_64_chars_xxxxxxxxxxxxxxxxxxxxxxxxx}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-123456789}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_PAYMENT_TOKEN: ${TELEGRAM_PAYMENT_TOKEN:-}
+      YANDEX_MAPS_API_KEY: ${YANDEX_MAPS_API_KEY:-}
+      YANDEX_GEOCODER_API_KEY: ${YANDEX_GEOCODER_API_KEY:-}
+      YANDEX_ROUTER_API_KEY: ${YANDEX_ROUTER_API_KEY:-}
+      PAYME_MERCHANT_ID: ${PAYME_MERCHANT_ID:-}
+      PAYME_SECRET_KEY: ${PAYME_SECRET_KEY:-}
+      PAYME_TEST_SECRET_KEY: ${PAYME_TEST_SECRET_KEY:-}
+      PAYME_IS_TEST: "true"
+      CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
+      CLICK_SERVICE_ID: ${CLICK_SERVICE_ID:-}
+      CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
+      PASSENGER_APP_URL: ${PASSENGER_APP_URL:-http://localhost:5173}
+      DRIVER_APP_URL: ${DRIVER_APP_URL:-http://localhost:5174}
+      SOCKET_CORS_ORIGIN: "*"
+      UPLOAD_DIR: /app/uploads
+      PORT: "3000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+
+  # ─── Frontend ilovalar ────────────────────────────────────────────────────
+  passenger:
+    build:
+      context: ./passenger-app
+      dockerfile: Dockerfile
+      args:
+        VITE_YANDEX_MAPS_KEY: ${YANDEX_MAPS_API_KEY:-}
+    container_name: taxigo_passenger
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  driver:
+    build:
+      context: ./driver-app
+      dockerfile: Dockerfile
+      args:
+        VITE_YANDEX_MAPS_KEY: ${YANDEX_MAPS_API_KEY:-}
+    container_name: taxigo_driver
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+
+  admin:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+    container_name: taxigo_admin
+    restart: unless-stopped
+    ports:
+      - "5175:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
