@@ -35,6 +35,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── OSRM Routing ─────────────────────────────────────────────────────────
+  osrm:
+    build:
+      context: ./osrm
+      dockerfile: Dockerfile
+    container_name: taxigo_osrm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - osrm_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5000/route/v1/driving/69.24,41.29;69.34,41.32 2>&1 | grep -q '200' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
   # ─── Backend (FastAPI) ────────────────────────────────────────────────────
   backend:
     build:
@@ -69,6 +87,8 @@ services:
       CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
       PASSENGER_APP_URL: ${PASSENGER_APP_URL:-http://localhost:5173}
       DRIVER_APP_URL: ${DRIVER_APP_URL:-http://localhost:5174}
+      OSRM_URL: http://osrm:5000
+      DEV_MODE: "true"
       SOCKET_CORS_ORIGIN: "*"
       UPLOAD_DIR: /app/uploads
       PORT: "3000"
@@ -114,6 +134,21 @@ services:
     depends_on:
       - backend
 
+  gateway:
+    image: nginx:alpine
+    container_name: taxigo_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - passenger
+      - driver
+      - admin
+      - backend
+
 volumes:
   postgres_data:
   redis_data:
+  osrm_data:

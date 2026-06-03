@@ -4,10 +4,117 @@ import api from '../../services/api';
 const STATUS_COLOR = { approved: '#4CAF50', pending: '#FF9800', blocked: '#f44336', rejected: '#9E9E9E' };
 const STATUS_LABEL = { approved: 'Tasdiqlangan', pending: 'Kutilmoqda', blocked: 'Bloklangan', rejected: 'Rad etilgan' };
 
+const EMPTY_FORM = { firstName: '', lastName: '', phone: '', carModel: '', carColor: '', carNumber: '', carYear: '', telegramId: '' };
+
+function AddDriverModal({ onClose, onSaved }) {
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/drivers', {
+        first_name: form.firstName,
+        last_name: form.lastName,
+        phone: form.phone,
+        car_model: form.carModel,
+        car_color: form.carColor,
+        car_number: form.carNumber,
+        car_year: form.carYear ? parseInt(form.carYear) : null,
+        telegram_id: form.telegramId ? parseInt(form.telegramId) : null,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Xatolik yuz berdi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inp = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box', marginBottom: 12,
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Yangi haydovchi qo'shish</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Ism *</label>
+              <input style={inp} value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Familiya *</label>
+              <input style={inp} value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required />
+            </div>
+          </div>
+
+          <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Telefon *</label>
+          <input style={inp} placeholder="+998901234567" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Mashina modeli *</label>
+              <input style={inp} placeholder="Nexia 3" value={form.carModel} onChange={(e) => set('carModel', e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Rangi *</label>
+              <input style={inp} placeholder="Oq" value={form.carColor} onChange={(e) => set('carColor', e.target.value)} required />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Davlat raqami *</label>
+              <input style={inp} placeholder="01 A 123 BC" value={form.carNumber} onChange={(e) => set('carNumber', e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Yili</label>
+              <input style={inp} type="number" placeholder="2018" value={form.carYear} onChange={(e) => set('carYear', e.target.value)} />
+            </div>
+          </div>
+
+          <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Telegram ID <span style={{ color: '#94a3b8' }}>(ixtiyoriy)</span></label>
+          <input style={inp} type="number" placeholder="Bo'sh qoldirsangiz avtomatik beriladi" value={form.telegramId} onChange={(e) => set('telegramId', e.target.value)} />
+
+          {error && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 12, color: '#dc2626', fontSize: 13 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 14 }}>
+              Bekor qilish
+            </button>
+            <button type="submit" disabled={loading} style={{ flex: 2, padding: 11, borderRadius: 8, border: 'none', background: loading ? '#93c5fd' : '#2563EB', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+              {loading ? 'Saqlanmoqda...' : 'Qo\'shish'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Drivers() {
   const [drivers, setDrivers] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   const load = () => {
     const params = filter !== 'all' ? { status: filter } : {};
@@ -34,15 +141,25 @@ export default function Drivers() {
 
   return (
     <div>
+      {showModal && <AddDriverModal onClose={() => setShowModal(false)} onSaved={load} />}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22 }}>Haydovchilar</h1>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}
-          style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #ddd', fontSize: 14 }}>
-          <option value="all">Barchasi</option>
-          <option value="pending">Kutilmoqda</option>
-          <option value="approved">Tasdiqlangan</option>
-          <option value="blocked">Bloklangan</option>
-        </select>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #ddd', fontSize: 14 }}>
+            <option value="all">Barchasi</option>
+            <option value="pending">Kutilmoqda</option>
+            <option value="approved">Tasdiqlangan</option>
+            <option value="blocked">Bloklangan</option>
+          </select>
+          <button onClick={() => setShowModal(true)} style={{
+            padding: '8px 18px', background: '#2563EB', color: '#fff',
+            border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}>
+            + Haydovchi qo'shish
+          </button>
+        </div>
       </div>
 
       <div style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>

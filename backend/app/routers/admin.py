@@ -34,6 +34,32 @@ async def list_drivers(status: str | None = None, page: int = 1, limit: int = 20
     return {"drivers": [dict(r) for r in rows], "total": total, "page": page}
 
 
+@router.post("/drivers", status_code=201)
+async def create_driver(body: dict, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    import random
+    tg_id = body.get("telegram_id") or random.randint(10**9, 10**10 - 1)
+    tg_id = int(tg_id)
+    existing = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", tg_id)
+    if existing:
+        raise HTTPException(409, "Bu telegram_id allaqachon mavjud")
+    user = await conn.fetchrow("SELECT id FROM users WHERE telegram_id=$1", tg_id)
+    if not user:
+        user = await conn.fetchrow(
+            "INSERT INTO users(telegram_id,first_name,last_name) VALUES($1,$2,$3) RETURNING id",
+            tg_id, body.get("first_name", ""), body.get("last_name", ""),
+        )
+    row = await conn.fetchrow(
+        """INSERT INTO drivers(user_id,telegram_id,first_name,last_name,phone,
+                               car_model,car_color,car_number,car_year,status)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'approved') RETURNING *""",
+        user["id"], tg_id,
+        body.get("first_name", ""), body.get("last_name", ""), body.get("phone", ""),
+        body.get("car_model", ""), body.get("car_color", ""),
+        body.get("car_number", "").upper(), body.get("car_year"),
+    )
+    return dict(row)
+
+
 @router.get("/drivers/{driver_id}")
 async def get_driver(driver_id: int, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
     row = await conn.fetchrow("SELECT * FROM drivers WHERE id=$1", driver_id)

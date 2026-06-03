@@ -21,8 +21,10 @@ async def reverse_geocode(lat: float = Query(...), lng: float = Query(...), user
 
 @router.get("/route")
 async def route(
-    from_lat: float = Query(...), from_lng: float = Query(...),
-    to_lat: float = Query(...), to_lng: float = Query(...),
+    from_lat: float = Query(..., alias="fromLat"),
+    from_lng: float = Query(..., alias="fromLng"),
+    to_lat: float = Query(..., alias="toLat"),
+    to_lng: float = Query(..., alias="toLng"),
     user=Depends(get_current_user),
 ):
     try:

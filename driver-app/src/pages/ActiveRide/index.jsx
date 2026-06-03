@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRideStore } from '../../store/rideStore';
 import { useDriverStore } from '../../store/driverStore';
 import { getSocket } from '../../services/socket';
 import api from '../../services/api';
+import YandexMap from '../../components/Map/YandexMap';
 
 const RIDE_STEPS = [
   { status: 'accepted', label: 'Yo\'lovchiga boring', btnLabel: 'Keldim', nextStatus: 'driver_arrived', action: 'driver:arrived' },
@@ -17,27 +18,57 @@ export default function ActiveRide() {
   const { driver } = useDriverStore();
   const [rideStatus, setRideStatus] = useState('accepted');
   const [loading, setLoading] = useState(false);
+  const [driverLocation, setDriverLocation] = useState(null);
+  const [route, setRoute] = useState(null);
 
   if (!activeRide) { navigate('/dashboard'); return null; }
 
   const currentStep = RIDE_STEPS.find((s) => s.status === rideStatus) || RIDE_STEPS[0];
+  const targetPoint = rideStatus === 'accepted' ? activeRide.pickup : activeRide.dropoff;
+
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => setDriverLocation({ lat: coords.latitude, lng: coords.longitude }),
+      () => setDriverLocation({ lat: driver?.lat || 41.2995, lng: driver?.lng || 69.2401 }),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }, [driver?.lat, driver?.lng]);
+
+  useEffect(() => {
+    if (!driverLocation || !targetPoint?.lat || !targetPoint?.lng) return;
+    api.get('/maps/route', {
+      params: {
+        fromLat: driverLocation.lat,
+        fromLng: driverLocation.lng,
+        toLat: targetPoint.lat,
+        toLng: targetPoint.lng,
+      },
+    }).then(({ data }) => setRoute(data)).catch(() => setRoute(null));
+  }, [driverLocation, targetPoint?.lat, targetPoint?.lng, rideStatus]);
+
+  const markers = useMemo(() => ([
+    driverLocation && { ...driverLocation, type: 'driver', label: 'Siz' },
+    activeRide.pickup && { ...activeRide.pickup, type: 'pickup', label: 'Yo‘lovchi' },
+    activeRide.dropoff && { ...activeRide.dropoff, type: 'dropoff', label: 'Manzil' },
+  ].filter(Boolean)), [driverLocation, activeRide]);
 
   const handleAction = async () => {
     setLoading(true);
     const socket = getSocket();
 
     try {
+      const oid = activeRide.order_id;
       if (rideStatus === 'accepted') {
-        await api.put(`/orders/${activeRide.orderId}/arrived`);
-        socket.emit('driver:arrived', { driverId: driver.id, orderId: activeRide.orderId });
+        await api.put(`/orders/${oid}/arrived`);
+        socket.emit('driver:arrived', { order_id: oid });
         setRideStatus('driver_arrived');
       } else if (rideStatus === 'driver_arrived') {
-        await api.put(`/orders/${activeRide.orderId}/start`);
-        socket.emit('driver:start_ride', { driverId: driver.id, orderId: activeRide.orderId });
+        await api.put(`/orders/${oid}/start`);
+        socket.emit('driver:start_ride', { order_id: oid });
         setRideStatus('in_progress');
       } else if (rideStatus === 'in_progress') {
-        await api.put(`/orders/${activeRide.orderId}/complete`);
-        socket.emit('driver:complete_ride', { driverId: driver.id, orderId: activeRide.orderId });
+        await api.put(`/orders/${oid}/complete`);
+        socket.emit('driver:complete_ride', { order_id: oid });
         clearRide();
         navigate('/dashboard');
       }
@@ -60,6 +91,15 @@ export default function ActiveRide() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: 20 }}>
       <h2 style={{ marginBottom: 20 }}>Faol sayohat</h2>
 
+      <div style={{ height: 220, borderRadius: 16, overflow: 'hidden', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+        <YandexMap
+          center={driverLocation || targetPoint}
+          markers={markers}
+          polyline={route?.polyline || []}
+          style={{ height: '100%' }}
+        />
+      </div>
+
       <div style={{ background: '#E8F5E9', borderRadius: 16, padding: 16, marginBottom: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 16, fontWeight: 600, color: '#388E3C' }}>{currentStep.label}</div>
       </div>
@@ -73,6 +113,18 @@ export default function ActiveRide() {
           <div style={{ fontSize: 12, color: '#888' }}>Borish joyi</div>
           <div style={{ fontWeight: 500 }}>{activeRide.dropoff?.address}</div>
         </div>
+        {route?.distance_km > 0 && (
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+            <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#888' }}>Masofa</div>
+              <div style={{ fontWeight: 600 }}>{route.distance_km.toFixed(1)} km</div>
+            </div>
+            <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#888' }}>Vaqt</div>
+              <div style={{ fontWeight: 600 }}>{route.duration_min} min</div>
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 18, fontWeight: 700, color: '#1976D2', marginTop: 8 }}>
           {new Intl.NumberFormat('uz-UZ').format(activeRide.price)} so'm
         </div>

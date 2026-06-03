@@ -14,13 +14,15 @@ async def create_order(conn: asyncpg.Connection, passenger_id: int, pickup: dict
                dropoff_address, dropoff_lat, dropoff_lng, dropoff_location,
                distance_km, duration_min, estimated_price, payment_method, status
            ) VALUES(
-               $1, $2, $3, $4, ST_MakePoint($5,$3)::geography,
-               $6, $7, $8, ST_MakePoint($9,$7)::geography,
-               $10, $11, $12, $13, 'searching'
+               $1, $2, $3, $4, ST_MakePoint($5, $6)::geography,
+               $7, $8, $9, ST_MakePoint($10, $11)::geography,
+               $12, $13, $14, $15, 'searching'
            ) RETURNING *""",
         passenger_id,
-        pickup["address"], pickup["lat"], pickup["lng"], pickup["lng"],
-        dropoff["address"], dropoff["lat"], dropoff["lng"], dropoff["lng"],
+        pickup["address"], pickup["lat"], pickup["lng"],
+        pickup["lng"], pickup["lat"],
+        dropoff["address"], dropoff["lat"], dropoff["lng"],
+        dropoff["lng"], dropoff["lat"],
         distance_km, duration_min, price, payment_method,
     )
     order = dict(row)
@@ -59,8 +61,35 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
     for driver in drivers:
         await sio.emit("new_order", order_data, room=f"driver:{driver['id']}")
         asyncio.create_task(_driver_timeout(driver["id"], order["id"]))
+        asyncio.create_task(_notify_driver_bot(driver, order_data))
 
     asyncio.create_task(_order_timeout(order["id"], order["passenger_id"]))
+
+
+async def _notify_driver_bot(driver: dict, order_data: dict):
+    from app.services.notification_service import _bot
+    from app.config import settings
+    if not _bot:
+        return
+    try:
+        pickup = order_data["pickup"]["address"]
+        dropoff = order_data["dropoff"]["address"]
+        dist = order_data["distance_km"]
+        price = int(order_data["price"])
+        text = (
+            f"🚖 Yangi buyurtma!\n\n"
+            f"📍 {pickup}\n"
+            f"🏁 {dropoff}\n\n"
+            f"📏 {dist} km · 💰 {price:,} so'm\n\n"
+            f"Qabul qilish uchun ilovani oching 👇"
+        )
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Ilovani ochish", url=settings.driver_app_url)
+        ]])
+        await _bot.send_message(driver["telegram_id"], text, reply_markup=kb)
+    except Exception as e:
+        print(f"[bot] driver notify error: {e}")
 
 
 async def _driver_timeout(driver_id: int, order_id: int):

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     click_service_id: str = ""
     click_secret_key: str = ""
 
+    osrm_url: str = "http://localhost:5000"
+
     passenger_app_url: str = "http://localhost:5173"
     driver_app_url: str = "http://localhost:5174"
     admin_url: str = "http://localhost:5175"
@@ -38,6 +40,7 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_file_size: int = 5 * 1024 * 1024
     driver_location_ttl: int = 30
+    dev_mode: bool = False
 
     @property
     def admin_ids(self) -> list[int]:

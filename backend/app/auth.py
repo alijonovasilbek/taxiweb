@@ -37,10 +37,10 @@ def verify_telegram_init_data(init_data: str) -> dict:
     return json.loads(unquote(user_str))
 
 
-def create_token(payload: dict) -> str:
+def create_token(payload: dict, secret: str | None = None) -> str:
     from datetime import datetime, timedelta, timezone
     expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expires_days)
-    return jwt.encode({**payload, "exp": expire}, settings.jwt_secret, algorithm="HS256")
+    return jwt.encode({**payload, "exp": expire}, secret or settings.jwt_secret, algorithm="HS256")
 
 
 def decode_token(token: str, secret: str | None = None) -> dict:

@@ -131,8 +131,36 @@ async def driver_location_update(sid, data):
 
 @sio.on("driver:accept_order")
 async def driver_accept_order(sid, data):
-    """HTTP endpoint ham bor, bu socket shortcut."""
-    pass
+    session = await sio.get_session(sid)
+    driver_id = session.get("driver_id")
+    order_id = data.get("order_id")
+    if not driver_id or not order_id:
+        return
+    from app.database import pool
+    from app.services.order_service import accept_order
+    async with pool.acquire() as conn:
+        try:
+            await accept_order(conn, order_id, driver_id)
+        except ValueError:
+            await sio.emit("order_unavailable", {"order_id": order_id}, to=sid)
+
+
+@sio.on("driver:reject_order")
+async def driver_reject_order(sid, data):
+    session = await sio.get_session(sid)
+    driver_id = session.get("driver_id")
+    order_id = data.get("order_id")
+    if not driver_id or not order_id:
+        return
+    from app.database import pool
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT passenger_id FROM orders WHERE id=$1", order_id)
+    if row:
+        await sio.emit(
+            "order_rejected",
+            {"order_id": order_id, "reason": "Haydovchi rad etdi"},
+            room=f"passenger:{row['passenger_id']}",
+        )
 
 
 @sio.on("driver:arrived")

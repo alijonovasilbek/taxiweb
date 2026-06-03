@@ -1,8 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TelegramAuthRequest(BaseModel):
-    init_data: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    init_data: str = Field(alias="initData")
     role: str = "passenger"  # passenger | driver
 
 

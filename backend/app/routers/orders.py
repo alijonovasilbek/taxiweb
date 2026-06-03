@@ -107,14 +107,44 @@ async def complete(order_id: int, user=Depends(get_current_user), conn: asyncpg.
 
 @router.put("/{order_id}/cancel")
 async def cancel(order_id: int, body: CancelOrderRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    row = await conn.fetchrow(
-        """UPDATE orders SET status='cancelled',cancelled_at=NOW(),cancel_reason=$3
-           WHERE id=$1 AND status IN ('searching','accepted','driver_arrived') RETURNING driver_id,passenger_id""",
-        order_id, body.reason, body.reason,
-    )
-    if row and row["driver_id"]:
+    cancelled_by = "driver" if user.get("role") == "driver" else "passenger"
+    reason = body.reason or "Bekor qilindi"
+
+    if cancelled_by == "driver":
+        driver = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+        if not driver:
+            raise HTTPException(404, "Driver not found")
+        row = await conn.fetchrow(
+            """UPDATE orders
+               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2
+               WHERE id=$1
+                 AND driver_id=$3
+                 AND status IN ('accepted','driver_arrived')
+               RETURNING driver_id, passenger_id""",
+            order_id, reason, driver["id"],
+        )
+    else:
+        row = await conn.fetchrow(
+            """UPDATE orders
+               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2
+               WHERE id=$1
+                 AND passenger_id=$3
+                 AND status IN ('searching','accepted','driver_arrived')
+               RETURNING driver_id, passenger_id""",
+            order_id, reason, user["id"],
+        )
+
+    if not row:
+        raise HTTPException(409, "Order cannot be cancelled")
+
+    if row["driver_id"]:
         await conn.execute("UPDATE drivers SET is_on_ride=false WHERE id=$1", row["driver_id"])
-        cancelled_by = "driver" if user.get("role") == "driver" else "passenger"
-        target_room = f"passenger:{row['passenger_id']}" if cancelled_by == "driver" else f"driver:{row['driver_id']}"
-        await sio.emit("order_cancelled", {"order_id": order_id, "reason": body.reason, "cancelled_by": cancelled_by}, room=target_room)
+
+    target_room = f"passenger:{row['passenger_id']}" if cancelled_by == "driver" else (f"driver:{row['driver_id']}" if row["driver_id"] else None)
+    if target_room:
+        await sio.emit(
+            "order_cancelled",
+            {"order_id": order_id, "reason": reason, "cancelled_by": cancelled_by},
+            room=target_room,
+        )
     return {"success": True}

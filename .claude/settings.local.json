@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker compose build *)",
+      "PowerShell(docker compose up *)",
+      "PowerShell($token = \"8736812869:AAF13JmDsyRu6ioDezVmMGl0dhpbc5yZDts\"; $resp = Invoke-RestMethod -Uri \"https://api.telegram.org/bot$token/getWebhookInfo\" -Method Get; $resp | ConvertTo-Json)",
+      "PowerShell(docker exec taxigo_backend *)",
+      "PowerShell(git *)",
+      "PowerShell(docker compose stop osrm 2>&1; docker volume rm taxiweb_osrm_data 2>&1)",
+      "PowerShell(docker rm taxigo_osrm 2>&1; docker volume rm taxiweb_osrm_data 2>&1)",
+      "PowerShell(docker compose stop osrm 2>&1; docker rm taxigo_osrm 2>&1; docker volume rm taxiweb_osrm_data 2>&1)",
+      "PowerShell(New-Item *)",
+      "PowerShell(docker run *)",
+      "Bash(docker compose build *)",
+      "Bash(docker compose up *)",
+      "Bash(docker exec *)",
+      "Bash(docker cp *)",
+      "Bash(docker restart *)",
+      "PowerShell(docker cp \"C:\\\\Users\\\\Hp\\\\PycharmProjects\\\\taxiweb\\\\backend\\\\app\\\\services\\\\order_service.py\" taxigo_backend:/app/app/services/order_service.py; docker cp \"C:\\\\Users\\\\Hp\\\\PycharmProjects\\\\taxiweb\\\\backend\\\\app\\\\routers\\\\maps.py\" taxigo_backend:/app/app/routers/maps.py; docker restart taxigo_backend)",
+      "PowerShell(docker cp \"C:\\\\Users\\\\Hp\\\\PycharmProjects\\\\taxiweb\\\\backend\\\\app\\\\routers\\\\auth.py\" taxigo_backend:/app/app/routers/auth.py; docker cp \"C:\\\\Users\\\\Hp\\\\PycharmProjects\\\\taxiweb\\\\backend\\\\app\\\\config.py\" taxigo_backend:/app/app/config.py; docker restart taxigo_backend)",
+      "PowerShell(docker exec *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/driver/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/admin/)",
+      "Bash(curl -s -o /dev/null -w \"passenger: %{http_code}\\\\n\" http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"driver:    %{http_code}\\\\n\" http://localhost:8080/driver/)",
+      "Bash(curl -s -o /dev/null -w \"admin:     %{http_code}\\\\n\" http://localhost:8080/admin/)",
+      "Bash(curl -s http://localhost:8080/driver/)"
+    ]
+  }
+}
