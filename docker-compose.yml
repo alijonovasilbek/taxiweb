@@ -68,8 +68,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://taxigo:taxigo123@postgres:5432/taxigo_db
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET:-taxigo_super_secret_key_minimum_64_chars_xxxxxxxxxxxxxxxxxxxxxxxxxxx}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-taxigo_admin_secret_key_minimum_64_chars_xxxxxxxxxxxxxxxxxxxxxxxxx}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-123456789}
@@ -85,13 +85,14 @@ services:
       CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
       CLICK_SERVICE_ID: ${CLICK_SERVICE_ID:-}
       CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
-      PASSENGER_APP_URL: ${PASSENGER_APP_URL:-http://localhost:5173}
-      DRIVER_APP_URL: ${DRIVER_APP_URL:-http://localhost:5174}
-      OSRM_URL: http://osrm:5000
-      DEV_MODE: "true"
-      SOCKET_CORS_ORIGIN: "*"
-      UPLOAD_DIR: /app/uploads
-      PORT: "3000"
+      PASSENGER_APP_URL: ${PASSENGER_APP_URL}
+      DRIVER_APP_URL: ${DRIVER_APP_URL}
+      ADMIN_URL: ${ADMIN_URL}
+      OSRM_URL: ${OSRM_URL}
+      DEV_MODE: ${DEV_MODE:-false}
+      SOCKET_CORS_ORIGIN: ${SOCKET_CORS_ORIGIN}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      PORT: ${PORT:-3000}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs
