@@ -11,6 +11,14 @@ import aiofiles
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
 
+def serialize_driver(row):
+    if not row:
+        return None
+    data = dict(row)
+    data.pop("password_hash", None)
+    return data
+
+
 async def get_driver_row(conn: asyncpg.Connection, user: dict):
     driver_id = user.get("driver_id")
     if driver_id:
@@ -44,7 +52,7 @@ async def register(body: DriverRegisterRequest, user=Depends(get_current_user), 
         user_id, tg_id, body.first_name, body.last_name, body.phone,
         body.car_model, body.car_color, body.car_number.upper(), body.car_year,
     )
-    return dict(row)
+    return serialize_driver(row)
 
 
 @router.get("/me")
@@ -52,7 +60,7 @@ async def get_me(user=Depends(get_current_user), conn: asyncpg.Connection = Depe
     row = await get_driver_row(conn, user)
     if not row:
         raise HTTPException(404, "Driver not found")
-    return dict(row)
+    return serialize_driver(row)
 
 
 @router.put("/me/status")
@@ -96,16 +104,18 @@ async def upload_documents(
     driver = await get_driver_row(conn, user)
     if not driver:
         raise HTTPException(404, "Driver not found")
+
     updates = {}
     for field, file in [("license_photo_url", license), ("car_doc_photo_url", car_doc)]:
         if file:
             if not file.content_type.startswith("image/"):
                 raise HTTPException(400, "Only image files allowed")
-            fname = f"{user.get('telegram_id')}_{field}_{file.filename}"
+            fname = f"{driver['id']}_{field}_{file.filename}"
             path = os.path.join(settings.upload_dir, fname)
             async with aiofiles.open(path, "wb") as f:
                 await f.write(await file.read())
             updates[field] = f"/uploads/{fname}"
+
     if updates:
         cols = ", ".join(f"{k}=${i+2}" for i, k in enumerate(updates))
         vals = list(updates.values())
@@ -113,7 +123,7 @@ async def upload_documents(
             f"UPDATE drivers SET {cols} WHERE id=$1 RETURNING *",
             driver["id"], *vals,
         )
-        return dict(row)
+        return serialize_driver(row)
     return {"message": "No files uploaded"}
 
 
