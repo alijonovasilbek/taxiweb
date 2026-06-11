@@ -73,10 +73,36 @@ function DriverLogin() {
 
 export default function App() {
   const { fetchMe, driver, isLoading, token, clearSession } = useDriverStore();
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
-    if (token && !driver) fetchMe();
-  }, [driver, fetchMe, token]);
+    let cancelled = false;
+
+    if (!token) {
+      setSessionChecked(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (driver) {
+      setSessionChecked(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setSessionChecked(false);
+    fetchMe().then((data) => {
+      if (cancelled) return;
+      if (!data) clearSession();
+      setSessionChecked(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession, driver, fetchMe, token]);
 
   useEffect(() => {
     const handleExpired = () => clearSession();
@@ -84,14 +110,14 @@ export default function App() {
     return () => window.removeEventListener('driver-auth-expired', handleExpired);
   }, [clearSession]);
 
-  if (isLoading) return (
+  if (isLoading || (token && !driver && !sessionChecked)) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
       <p>Yuklanmoqda...</p>
     </div>
   );
 
   if (!token) return <DriverLogin />;
-  if (!driver) return null;
+  if (!driver) return <DriverLogin />;
 
   return (
     <BrowserRouter basename="/driver">

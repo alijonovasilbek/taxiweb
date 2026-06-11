@@ -27,7 +27,8 @@ export const useDriverStore = create((set) => ({
       set({ driver: data, isLoading: false });
       return data;
     } catch {
-      set({ driver: null, isLoading: false });
+      localStorage.removeItem('taxigo_driver_token');
+      set({ token: null, driver: null, isLoading: false });
       return null;
     }
   },

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverStore } from '../../store/driverStore';
 import { useRideStore } from '../../store/rideStore';
@@ -17,13 +17,11 @@ const StatusScreen = ({ icon, title, subtitle }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { driver, fetchMe } = useDriverStore();
+  const { driver } = useDriverStore();
   const { isOnline, setOnline, activeRide } = useRideStore();
 
   useDriverSocket();
   useDriverLocation();
-
-  useEffect(() => { fetchMe(); }, []);
 
   if (activeRide) {
     navigate('/active-ride');

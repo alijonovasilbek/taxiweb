@@ -14,11 +14,29 @@ from app.socket_manager import sio
 from app.routers import auth, users, drivers, orders, payments, ratings, maps, admin
 
 
-async def _run_bot(dp, bot_obj):
-    try:
-        await dp.start_polling(bot_obj, handle_signals=False)
-    except Exception as e:
-        print(f"[bot] polling error: {e}")
+async def _run_bot():
+    retry_delay = 3
+    while True:
+        bot_obj = None
+        try:
+            from app.bot.handlers import create_bot
+
+            bot_obj, dp = create_bot()
+            await bot_obj.delete_webhook(drop_pending_updates=False)
+            print("[bot] webhook cleared, starting polling")
+            await dp.start_polling(bot_obj, handle_signals=False)
+        except asyncio.CancelledError:
+            if bot_obj:
+                await bot_obj.session.close()
+            raise
+        except Exception as e:
+            print(f"[bot] polling error: {e}")
+            if bot_obj:
+                try:
+                    await bot_obj.session.close()
+                except Exception:
+                    pass
+            await asyncio.sleep(retry_delay)
 
 
 @asynccontextmanager
@@ -34,9 +52,7 @@ async def lifespan(app: FastAPI):
     token = settings.telegram_bot_token
     if token and not token.startswith("0000000000"):
         try:
-            from app.bot.handlers import create_bot
-            bot_obj, dp = create_bot()
-            bot_task = asyncio.create_task(_run_bot(dp, bot_obj))
+            bot_task = asyncio.create_task(_run_bot())
             print("[bot] Telegram bot polling started")
         except Exception as e:
             print(f"[bot] Failed to start bot: {e}")

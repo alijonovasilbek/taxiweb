@@ -1,5 +1,7 @@
 _bot = None
 
+from app.services.bot_retry import with_retry
+
 
 def set_bot(bot):
     global _bot
@@ -14,7 +16,10 @@ async def send_to_passenger(user_id: int, message: str):
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT telegram_id FROM users WHERE id=$1", user_id)
         if row:
-            await _bot.send_message(row["telegram_id"], message)
+            await with_retry(
+                lambda: _bot.send_message(row["telegram_id"], message),
+                label="send_to_passenger",
+            )
     except Exception as e:
         print(f"[bot] send_to_passenger error: {e}")
 
@@ -27,6 +32,9 @@ async def send_to_driver(driver_id: int, message: str):
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT telegram_id FROM drivers WHERE id=$1", driver_id)
         if row:
-            await _bot.send_message(row["telegram_id"], message)
+            await with_retry(
+                lambda: _bot.send_message(row["telegram_id"], message),
+                label="send_to_driver",
+            )
     except Exception as e:
         print(f"[bot] send_to_driver error: {e}")

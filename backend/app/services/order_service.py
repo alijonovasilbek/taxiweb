@@ -1,6 +1,7 @@
 import asyncio
 import asyncpg
 from app.services.matching_service import find_nearest_drivers
+from app.services.bot_retry import with_retry
 from app.services.notification_service import send_to_passenger
 
 ORDER_TIMEOUT_SEC = 30
@@ -87,7 +88,10 @@ async def _notify_driver_bot(driver: dict, order_data: dict):
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Ilovani ochish", url=settings.driver_app_url)
         ]])
-        await _bot.send_message(driver["telegram_id"], text, reply_markup=kb)
+        await with_retry(
+            lambda: _bot.send_message(driver["telegram_id"], text, reply_markup=kb),
+            label="notify_driver_bot",
+        )
     except Exception as e:
         print(f"[bot] driver notify error: {e}")
 
