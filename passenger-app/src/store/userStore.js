@@ -8,7 +8,6 @@ export const useUserStore = create((set) => ({
 
   login: async (initData) => {
     set({ isLoading: true });
-    // Dev rejim: backend ga bormasdan mock user
     if (initData === 'dev_mock') {
       const mockUser = { id: 1, first_name: 'Test', last_name: 'User', username: 'testuser', rating: '5.00', total_rides: 0 };
       localStorage.setItem('taxigo_token', 'dev_token');
@@ -16,8 +15,18 @@ export const useUserStore = create((set) => ({
       return;
     }
     try {
-      const { data } = await api.post('/auth/verify-telegram', { initData, role: 'passenger' });
+      const { data } = await api.post('/auth/verify-telegram', { initData });
       localStorage.setItem('taxigo_token', data.token);
+      if (data.role === 'driver') {
+        localStorage.setItem('taxigo_driver_token', data.token);
+        window.location.replace('/driver/');
+        return;
+      }
+      if (data.role === 'admin') {
+        localStorage.setItem('taxigo_admin_token', data.token);
+        window.location.replace('/admin/');
+        return;
+      }
       set({ token: data.token, user: data.user, isLoading: false });
     } catch {
       set({ isLoading: false });

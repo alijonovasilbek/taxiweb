@@ -34,10 +34,10 @@ export default function Dashboard() {
 
       {stats ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-          <StatCard label="Bugungi buyurtmalar" value={stats.todayOrders} icon="📋" />
-          <StatCard label="Faol haydovchilar" value={stats.activeDrivers} icon="🚗" color="#4CAF50" />
-          <StatCard label="Bugungi daromad" value={fmt(stats.todayRevenue) + " so'm"} icon="💰" color="#FF9800" />
-          <StatCard label="O'rtacha reyting" value={'⭐ ' + stats.avgDriverRating} icon="⭐" color="#9C27B0" />
+          <StatCard label="Bugungi buyurtmalar" value={stats.today_orders} icon="📋" />
+          <StatCard label="Faol haydovchilar" value={stats.active_drivers} icon="🚗" color="#4CAF50" />
+          <StatCard label="Bugungi daromad" value={fmt(stats.today_revenue) + " so'm"} icon="💰" color="#FF9800" />
+          <StatCard label="O'rtacha reyting" value={'⭐ ' + stats.avg_driver_rating} icon="⭐" color="#9C27B0" />
         </div>
       ) : (
         <div style={{ color: '#888', padding: 40, textAlign: 'center' }}>Yuklanmoqda...</div>

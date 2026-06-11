@@ -11,6 +11,16 @@ import aiofiles
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
 
+async def get_driver_row(conn: asyncpg.Connection, user: dict):
+    driver_id = user.get("driver_id")
+    if driver_id:
+        return await conn.fetchrow("SELECT * FROM drivers WHERE id=$1", driver_id)
+    tg_id = user.get("telegram_id")
+    if tg_id:
+        return await conn.fetchrow("SELECT * FROM drivers WHERE telegram_id=$1", tg_id)
+    return None
+
+
 @router.post("/register", status_code=201)
 async def register(body: DriverRegisterRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
     tg_id = user.get("telegram_id")
@@ -39,7 +49,7 @@ async def register(body: DriverRegisterRequest, user=Depends(get_current_user), 
 
 @router.get("/me")
 async def get_me(user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    row = await conn.fetchrow("SELECT * FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    row = await get_driver_row(conn, user)
     if not row:
         raise HTTPException(404, "Driver not found")
     return dict(row)
@@ -47,7 +57,7 @@ async def get_me(user=Depends(get_current_user), conn: asyncpg.Connection = Depe
 
 @router.put("/me/status")
 async def update_status(body: DriverStatusRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    driver = await conn.fetchrow("SELECT * FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    driver = await get_driver_row(conn, user)
     if not driver or driver["status"] != "approved":
         raise HTTPException(403, "Not approved")
     await conn.execute("UPDATE drivers SET is_online=$2 WHERE id=$1", driver["id"], body.is_online)
@@ -56,7 +66,7 @@ async def update_status(body: DriverStatusRequest, user=Depends(get_current_user
 
 @router.get("/me/earnings")
 async def get_earnings(user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    driver = await conn.fetchrow("SELECT * FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    driver = await get_driver_row(conn, user)
     if not driver:
         raise HTTPException(404, "Driver not found")
     today = await conn.fetchrow(
@@ -68,7 +78,7 @@ async def get_earnings(user=Depends(get_current_user), conn: asyncpg.Connection 
 
 @router.get("/me/rides")
 async def get_rides(user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    driver = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    driver = await get_driver_row(conn, user)
     if not driver:
         raise HTTPException(404, "Driver not found")
     rows = await conn.fetch("SELECT * FROM orders WHERE driver_id=$1 ORDER BY created_at DESC LIMIT 50", driver["id"])
@@ -83,6 +93,9 @@ async def upload_documents(
     conn: asyncpg.Connection = Depends(get_db),
 ):
     os.makedirs(settings.upload_dir, exist_ok=True)
+    driver = await get_driver_row(conn, user)
+    if not driver:
+        raise HTTPException(404, "Driver not found")
     updates = {}
     for field, file in [("license_photo_url", license), ("car_doc_photo_url", car_doc)]:
         if file:
@@ -97,8 +110,8 @@ async def upload_documents(
         cols = ", ".join(f"{k}=${i+2}" for i, k in enumerate(updates))
         vals = list(updates.values())
         row = await conn.fetchrow(
-            f"UPDATE drivers SET {cols} WHERE telegram_id=$1 RETURNING *",
-            user.get("telegram_id"), *vals,
+            f"UPDATE drivers SET {cols} WHERE id=$1 RETURNING *",
+            driver["id"], *vals,
         )
         return dict(row)
     return {"message": "No files uploaded"}

@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import base64
+import os
 import time
 from urllib.parse import parse_qsl, unquote
 
@@ -41,6 +43,33 @@ def create_token(payload: dict, secret: str | None = None) -> str:
     from datetime import datetime, timedelta, timezone
     expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expires_days)
     return jwt.encode({**payload, "exp": expire}, secret or settings.jwt_secret, algorithm="HS256")
+
+
+def hash_password(password: str, iterations: int = 120000) -> str:
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
+    return "pbkdf2_sha256${}${}${}".format(
+        iterations,
+        base64.b64encode(salt).decode(),
+        base64.b64encode(digest).decode(),
+    )
+
+
+def verify_password(password: str, password_hash: str | None) -> bool:
+    if not password_hash:
+        return False
+    try:
+        algorithm, raw_iterations, raw_salt, raw_digest = password_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(raw_iterations)
+        salt = base64.b64decode(raw_salt.encode())
+        expected = base64.b64decode(raw_digest.encode())
+    except Exception:
+        return False
+
+    actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
+    return hmac.compare_digest(actual, expected)
 
 
 def decode_token(token: str, secret: str | None = None) -> dict:

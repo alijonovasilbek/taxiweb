@@ -4,7 +4,7 @@ import api from '../../services/api';
 const STATUS_COLOR = { approved: '#4CAF50', pending: '#FF9800', blocked: '#f44336', rejected: '#9E9E9E' };
 const STATUS_LABEL = { approved: 'Tasdiqlangan', pending: 'Kutilmoqda', blocked: 'Bloklangan', rejected: 'Rad etilgan' };
 
-const EMPTY_FORM = { firstName: '', lastName: '', phone: '', carModel: '', carColor: '', carNumber: '', carYear: '', telegramId: '' };
+const EMPTY_FORM = { firstName: '', lastName: '', phone: '', carModel: '', carColor: '', carNumber: '', carYear: '', telegramId: '', driverLogin: '', password: '' };
 
 function AddDriverModal({ onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -27,6 +27,8 @@ function AddDriverModal({ onClose, onSaved }) {
         car_number: form.carNumber,
         car_year: form.carYear ? parseInt(form.carYear) : null,
         telegram_id: form.telegramId ? parseInt(form.telegramId) : null,
+        driver_login: form.driverLogin,
+        password: form.password,
       });
       onSaved();
       onClose();
@@ -90,6 +92,17 @@ function AddDriverModal({ onClose, onSaved }) {
           <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Telegram ID <span style={{ color: '#94a3b8' }}>(ixtiyoriy)</span></label>
           <input style={inp} type="number" placeholder="Bo'sh qoldirsangiz avtomatik beriladi" value={form.telegramId} onChange={(e) => set('telegramId', e.target.value)} />
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Login *</label>
+              <input style={inp} placeholder="driver01" value={form.driverLogin} onChange={(e) => set('driverLogin', e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Parol *</label>
+              <input style={inp} type="text" placeholder="Kamida 4 belgi" value={form.password} onChange={(e) => set('password', e.target.value)} required />
+            </div>
+          </div>
+
           {error && (
             <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 12, color: '#dc2626', fontSize: 13 }}>
               {error}
@@ -139,6 +152,18 @@ export default function Drivers() {
     setLoading(false);
   };
 
+  const handleSetCredentials = async (driver) => {
+    const driverLogin = prompt('Login kiriting:', driver.driver_login || '');
+    if (!driverLogin) return;
+    const password = prompt('Parol kiriting:');
+    if (!password) return;
+    setLoading(true);
+    await api.put(`/drivers/${driver.id}/credentials`, { driver_login: driverLogin, password })
+      .then(() => load())
+      .catch((err) => alert(err.response?.data?.detail || 'Xatolik yuz berdi'));
+    setLoading(false);
+  };
+
   return (
     <div>
       {showModal && <AddDriverModal onClose={() => setShowModal(false)} onSaved={load} />}
@@ -166,7 +191,7 @@ export default function Drivers() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
-              {['Ism', 'Telefon', 'Mashina', 'Raqam', 'Reyting', 'Holat', 'Amallar'].map((h) => (
+              {['Ism', 'Login', 'Telefon', 'Mashina', 'Raqam', 'Reyting', 'Holat', 'Amallar'].map((h) => (
                 <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, color: '#888', fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
@@ -175,6 +200,7 @@ export default function Drivers() {
             {drivers.map((d) => (
               <tr key={d.id} style={{ borderTop: '1px solid #f0f0f0' }}>
                 <td style={{ padding: '12px 16px', fontWeight: 500 }}>{d.first_name} {d.last_name}</td>
+                <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{d.driver_login || '-'}</td>
                 <td style={{ padding: '12px 16px', fontSize: 13 }}>{d.phone}</td>
                 <td style={{ padding: '12px 16px', fontSize: 13 }}>{d.car_model} ({d.car_color})</td>
                 <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{d.car_number}</td>
@@ -186,6 +212,10 @@ export default function Drivers() {
                 </td>
                 <td style={{ padding: '12px 16px' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => handleSetCredentials(d)} disabled={loading}
+                      style={{ padding: '5px 10px', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
+                      Login/parol
+                    </button>
                     {d.status === 'pending' && (
                       <button onClick={() => handleApprove(d.id)} disabled={loading}
                         style={{ padding: '5px 10px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>

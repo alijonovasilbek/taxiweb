@@ -13,7 +13,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('taxigo_driver_token');
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('driver-auth-expired'));
     }
     return Promise.reject(err);
   }

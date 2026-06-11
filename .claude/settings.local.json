@@ -25,7 +25,9 @@
       "Bash(curl -s -o /dev/null -w \"passenger: %{http_code}\\\\n\" http://localhost:8080/)",
       "Bash(curl -s -o /dev/null -w \"driver:    %{http_code}\\\\n\" http://localhost:8080/driver/)",
       "Bash(curl -s -o /dev/null -w \"admin:     %{http_code}\\\\n\" http://localhost:8080/admin/)",
-      "Bash(curl -s http://localhost:8080/driver/)"
+      "Bash(curl -s http://localhost:8080/driver/)",
+      "Skill(update-config)",
+      "Bash(docker-compose up *)"
     ]
   }
 }

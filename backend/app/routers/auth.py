@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.schemas.auth import TelegramAuthRequest, RefreshRequest
-from app.services.auth_service import authenticate_passenger, authenticate_driver
-from app.auth import decode_token, create_token
+from app.schemas.auth import TelegramAuthRequest, RefreshRequest, DriverLoginRequest
+from app.auth import decode_token, create_token, verify_password
 from app.config import settings
 import asyncpg
 
@@ -11,9 +10,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/verify-telegram")
 async def verify_telegram(body: TelegramAuthRequest, conn: asyncpg.Connection = Depends(get_db)):
+    from app.services.auth_service import authenticate_auto, authenticate_driver, authenticate_passenger
+
     if body.role == "driver":
         return await authenticate_driver(body.init_data, conn)
-    return await authenticate_passenger(body.init_data, conn)
+
+    if body.role == "passenger":
+        return await authenticate_passenger(body.init_data, conn)
+
+    return await authenticate_auto(body.init_data, conn, settings.admin_ids)
 
 
 @router.post("/dev-login")
@@ -48,6 +53,23 @@ async def dev_login(body: dict, conn: asyncpg.Connection = Depends(get_db)):
         )
     token = create_token({"id": user["id"], "telegram_id": tg_id, "role": "passenger"})
     return {"token": token, "role": "passenger", "user": dict(user)}
+
+
+@router.post("/driver-login")
+async def driver_login(body: DriverLoginRequest, conn: asyncpg.Connection = Depends(get_db)):
+    driver = await conn.fetchrow("SELECT * FROM drivers WHERE driver_login=$1", body.login.strip())
+    if not driver or not verify_password(body.password, driver.get("password_hash")):
+        raise HTTPException(401, "Login yoki parol noto'g'ri")
+    if driver["status"] == "blocked":
+        raise HTTPException(403, "Haydovchi bloklangan")
+
+    token = create_token({
+        "role": "driver",
+        "driver_id": driver["id"],
+        "telegram_id": driver["telegram_id"],
+        "status": driver["status"],
+    })
+    return {"token": token, "role": "driver", "driver": dict(driver)}
 
 
 @router.post("/refresh")

@@ -8,6 +8,11 @@ class TelegramAuthRequest(BaseModel):
     role: str = "passenger"  # passenger | driver
 
 
+class DriverLoginRequest(BaseModel):
+    login: str
+    password: str
+
+
 class TokenResponse(BaseModel):
     token: str
     role: str
