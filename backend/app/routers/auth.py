@@ -8,6 +8,14 @@ import asyncpg
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def serialize_driver(row):
+    if not row:
+        return None
+    data = dict(row)
+    data.pop("password_hash", None)
+    return data
+
+
 @router.post("/verify-telegram")
 async def verify_telegram(body: TelegramAuthRequest, conn: asyncpg.Connection = Depends(get_db)):
     from app.services.auth_service import authenticate_auto, authenticate_driver, authenticate_passenger
@@ -43,7 +51,7 @@ async def dev_login(body: dict, conn: asyncpg.Connection = Depends(get_db)):
             "driver_id": driver["id"] if driver else None,
             "status": driver["status"] if driver else "unregistered",
         })
-        return {"token": token, "role": "driver", "driver": dict(driver) if driver else None}
+        return {"token": token, "role": "driver", "driver": serialize_driver(driver)}
 
     user = await conn.fetchrow("SELECT * FROM users WHERE telegram_id=$1", tg_id)
     if not user:
@@ -69,7 +77,7 @@ async def driver_login(body: DriverLoginRequest, conn: asyncpg.Connection = Depe
         "telegram_id": driver["telegram_id"],
         "status": driver["status"],
     })
-    return {"token": token, "role": "driver", "driver": dict(driver)}
+    return {"token": token, "role": "driver", "driver": serialize_driver(driver)}
 
 
 @router.post("/refresh")

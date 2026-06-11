@@ -8,6 +8,12 @@ import asyncpg
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def serialize_driver(row):
+    data = dict(row)
+    data.pop("password_hash", None)
+    return data
+
+
 @router.get("/dashboard")
 async def dashboard(admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
     today_orders = await conn.fetchval("SELECT COUNT(*) FROM orders WHERE created_at::date=CURRENT_DATE")
@@ -31,7 +37,7 @@ async def list_drivers(status: str | None = None, page: int = 1, limit: int = 20
         args.append(status)
     rows = await conn.fetch(f"SELECT * FROM drivers {where} ORDER BY created_at DESC LIMIT $1 OFFSET $2", *args)
     total = await conn.fetchval(f"SELECT COUNT(*) FROM drivers {where}", *([status] if status else []))
-    return {"drivers": [dict(r) for r in rows], "total": total, "page": page}
+    return {"drivers": [serialize_driver(r) for r in rows], "total": total, "page": page}
 
 
 @router.post("/drivers", status_code=201)
@@ -67,7 +73,7 @@ async def create_driver(body: dict, admin=Depends(get_admin_user), conn: asyncpg
         body.get("car_model", ""), body.get("car_color", ""),
         body.get("car_number", "").upper(), body.get("car_year"), driver_login, hash_password(password),
     )
-    return dict(row)
+    return serialize_driver(row)
 
 
 @router.put("/drivers/{driver_id}/credentials")
@@ -89,7 +95,7 @@ async def update_driver_credentials(driver_id: int, body: dict, admin=Depends(ge
     )
     if not row:
         raise HTTPException(404, "Not found")
-    return dict(row)
+    return serialize_driver(row)
 
 
 @router.get("/drivers/{driver_id}")
@@ -98,7 +104,7 @@ async def get_driver(driver_id: int, admin=Depends(get_admin_user), conn: asyncp
     if not row:
         raise HTTPException(404, "Not found")
     count = await conn.fetchval("SELECT COUNT(*) FROM orders WHERE driver_id=$1", driver_id)
-    return {**dict(row), "total_rides_count": count}
+    return {**serialize_driver(row), "total_rides_count": count}
 
 
 @router.put("/drivers/{driver_id}/approve")
