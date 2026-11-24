@@ -12,7 +12,7 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     const token = localStorage.getItem('taxigo_token');
-    if (err.response?.status === 401 && token !== 'dev_token') {
+    if (err.response?.status === 401 && token && !err.config?.url?.startsWith('/auth/')) {
       localStorage.removeItem('taxigo_token');
       window.location.reload();
     }

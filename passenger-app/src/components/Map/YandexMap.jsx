@@ -62,7 +62,7 @@ export default function YandexMap({ center, zoom = 14, markers = [], onMapClick,
       if (destroyed || !containerRef.current) return;
 
       const map = new ymaps.Map(containerRef.current, {
-        center: center ? [center.lat, center.lng] : [41.2995, 69.2401],
+        center: center ? [center.lat, center.lng] : [41.0694, 71.8237],
         zoom,
         controls: [],
       });

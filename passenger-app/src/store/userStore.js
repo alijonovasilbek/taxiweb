@@ -1,35 +1,30 @@
 import { create } from 'zustand';
 import api from '../services/api';
 
-export const useUserStore = create((set) => ({
+export const useUserStore = create((set, get) => ({
   token: localStorage.getItem('taxigo_token'),
   user: null,
   isLoading: false,
+  error: null,
 
   login: async (initData) => {
-    set({ isLoading: true });
-    if (initData === 'dev_mock') {
-      const mockUser = { id: 1, first_name: 'Test', last_name: 'User', username: 'testuser', rating: '5.00', total_rides: 0 };
-      localStorage.setItem('taxigo_token', 'dev_token');
-      set({ token: 'dev_token', user: mockUser, isLoading: false });
-      return;
-    }
+    set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post('/auth/verify-telegram', { initData });
+      let data;
+      if (initData === 'dev_mock') {
+        // Lokal ishlab chiqish: backend DEV_MODE=true bo'lsa haqiqiy token olinadi
+        const tgId = Number(localStorage.getItem('dev_tg_id') || 999999999);
+        ({ data } = await api.post('/auth/dev-login', { telegram_id: tgId, role: 'passenger', first_name: 'Test' }));
+      } else {
+        // Har doim yagona foydalanuvchi tokeni (bitta akkaunt — bir nechta rol)
+        ({ data } = await api.post('/auth/verify-telegram', { initData, role: 'passenger' }));
+      }
       localStorage.setItem('taxigo_token', data.token);
-      if (data.role === 'driver') {
-        localStorage.setItem('taxigo_driver_token', data.token);
-        window.location.replace('/driver/');
-        return;
-      }
-      if (data.role === 'admin') {
-        localStorage.setItem('taxigo_admin_token', data.token);
-        window.location.replace('/admin/');
-        return;
-      }
       set({ token: data.token, user: data.user, isLoading: false });
-    } catch {
-      set({ isLoading: false });
+      get().fetchMe();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      set({ isLoading: false, error: typeof detail === 'string' ? detail : null });
     }
   },
 
@@ -37,6 +32,12 @@ export const useUserStore = create((set) => ({
     try {
       const { data } = await api.get('/users/me');
       set({ user: data });
-    } catch {}
+      return data;
+    } catch {
+      return null;
+    }
   },
+
+  setUser: (user) => set({ user }),
+  hasRole: (role) => Boolean(get().user?.roles?.includes(role)),
 }));

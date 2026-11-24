@@ -16,11 +16,18 @@ from main import app
 
 ADMIN_TG = settings.admin_ids[0] if settings.admin_ids else 123456789
 CHORTOQ = {"lat": 41.0694, "lng": 71.8237}
+# Test foydalanuvchilari shu telegram_id oralig'ida yaratiladi va oxirida o'chiriladi
+TEST_TG_MIN, TEST_TG_MAX = 8_000_000_000, 8_999_999_999
 NAMANGAN = {"lat": 40.9983, "lng": 71.6726}
 
 
 def run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
+
+
+async def _cleanup():
+    async with database.pool.acquire() as conn:
+        await conn.execute("DELETE FROM users WHERE telegram_id BETWEEN $1 AND $2", TEST_TG_MIN, TEST_TG_MAX)
 
 
 @pytest.fixture(scope="module")
@@ -29,7 +36,9 @@ def loop():
     asyncio.set_event_loop(lp)
     lp.run_until_complete(database.init_pool())
     lp.run_until_complete(redis_client.init_redis())
+    lp.run_until_complete(_cleanup())
     yield lp
+    lp.run_until_complete(_cleanup())
     lp.run_until_complete(database.close_pool())
     lp.close()
 
@@ -43,7 +52,7 @@ def client(loop):
 
 
 def login(client, name: str, role: str = "passenger", tg: int | None = None) -> dict:
-    tg = tg or random.randint(10**9, 2 * 10**9)
+    tg = tg or random.randint(TEST_TG_MIN, TEST_TG_MAX)
     r = run(client.post("/api/auth/dev-login", json={"telegram_id": tg, "role": role, "first_name": name}))
     assert r.status_code == 200, r.text
     data = r.json()
