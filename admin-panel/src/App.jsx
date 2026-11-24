@@ -7,12 +7,25 @@ import Payments from './pages/Payments';
 import Reports from './pages/Reports';
 import Tariffs from './pages/Tariffs';
 import Login from './pages/Login';
+import Users from './pages/Users';
+import Vehicles from './pages/Vehicles';
+import Carpool from './pages/Carpool';
+import Requests from './pages/Requests';
+import Services from './pages/Services';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
+  { section: 'Platforma' },
+  { path: '/users', label: 'Foydalanuvchilar', icon: '👥' },
+  { path: '/vehicles', label: 'Transport / texnika', icon: '🚚' },
+  { path: '/services', label: 'Servislar va tariflar', icon: '🧩' },
+  { section: 'Servislar' },
+  { path: '/carpool', label: "Po'puti", icon: '🚐' },
+  { path: '/requests', label: 'Yuk va texnika', icon: '🚜' },
+  { section: 'Taksi' },
   { path: '/drivers', label: 'Haydovchilar', icon: '🚗' },
   { path: '/orders', label: 'Buyurtmalar', icon: '📋' },
-  { path: '/payments', label: 'To\'lovlar', icon: '💳' },
+  { path: '/payments', label: "To'lovlar", icon: '💳' },
   { path: '/tariffs', label: 'Tarif', icon: '💰' },
   { path: '/reports', label: 'Hisobotlar', icon: '📈' },
 ];
@@ -22,11 +35,13 @@ function Sidebar({ onLogout }) {
   return (
     <div style={{ width: 220, background: '#1e293b', height: '100vh', position: 'fixed', left: 0, top: 0, padding: '20px 0', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #334155', marginBottom: 16 }}>
-        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>TaxiGo</div>
+        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>Chortoq <span style={{ color: '#FACC15' }}>Services</span></div>
         <div style={{ color: '#94a3b8', fontSize: 12 }}>Admin Panel</div>
       </div>
-      <div style={{ flex: 1 }}>
-        {NAV_ITEMS.map((item) => (
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {NAV_ITEMS.map((item) => item.section ? (
+          <div key={item.section} style={{ padding: '14px 20px 6px', color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.section}</div>
+        ) : (
           <Link key={item.path} to={item.path} style={{
             display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px',
             color: pathname === item.path ? '#fff' : '#94a3b8',
@@ -71,6 +86,11 @@ export default function App() {
             <Route path="/payments" element={<Payments />} />
             <Route path="/tariffs" element={<Tariffs />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/vehicles" element={<Vehicles />} />
+            <Route path="/services" element={<Services />} />
+            <Route path="/carpool" element={<Carpool />} />
+            <Route path="/requests" element={<Requests />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
