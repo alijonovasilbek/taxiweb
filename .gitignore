@@ -13,3 +13,9 @@ Thumbs.db
 .idea/
 *.pem
 *.key
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

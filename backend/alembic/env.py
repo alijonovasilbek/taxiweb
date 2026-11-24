@@ -3,7 +3,18 @@ from logging.config import fileConfig
 from alembic import context
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ.get("DATABASE_URL", ""))
+_db_url = os.environ.get("DATABASE_URL", "")
+if not _db_url:
+    # .env faylidan o'qish (lokal ishga tushirish uchun)
+    try:
+        from app.config import settings
+        _db_url = settings.database_url
+    except Exception:
+        pass
+# SQLAlchemy 2.1+ "postgresql://" uchun psycopg (v3) ni tanlaydi — psycopg2 ni aniq ko'rsatamiz
+if _db_url.startswith("postgresql://") or _db_url.startswith("postgres://"):
+    _db_url = "postgresql+psycopg2://" + _db_url.split("://", 1)[1]
+config.set_main_option("sqlalchemy.url", _db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
