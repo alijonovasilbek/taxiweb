@@ -33,6 +33,10 @@ async def connect(sid, environ, auth):
     elif role == "admin":
         await sio.enter_room(sid, "admin")
 
+    # Chortoq Services: yagona foydalanuvchi xonasi (barcha servislar bildirishnomalari)
+    if payload.get("id"):
+        await sio.enter_room(sid, f"user:{payload['id']}")
+
     print(f"[socket] connected {sid} role={role}")
 
 

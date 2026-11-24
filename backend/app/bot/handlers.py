@@ -24,12 +24,28 @@ def create_bot() -> tuple[Bot, Dispatcher]:
     @dp.message(CommandStart())
     async def cmd_start(message: Message):
         driver_url = cache_busted_url(settings.driver_app_url, "driver-login-20260611")
+        app_url = settings.passenger_app_url.rstrip("/")
+
+        def page(path: str) -> WebAppInfo:
+            return WebAppInfo(url=f"{app_url}{path}")
+
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Taxi buyurtma qilish", web_app=WebAppInfo(url=settings.passenger_app_url))],
-            [InlineKeyboardButton(text="Haydovchi paneli", web_app=WebAppInfo(url=driver_url))],
+            [InlineKeyboardButton(text="📱 Chortoq Services", web_app=page("/"))],
+            [InlineKeyboardButton(text="🚕 Taksi", web_app=page("/book")),
+             InlineKeyboardButton(text="🚐 Po'puti", web_app=page("/carpool"))],
+            [InlineKeyboardButton(text="🚚 Yuk tashish", web_app=page("/requests/new/cargo")),
+             InlineKeyboardButton(text="🚜 Spets texnika", web_app=page("/requests/new/equipment"))],
+            [InlineKeyboardButton(text="🧰 Ijrochi paneli", web_app=page("/provider"))],
+            [InlineKeyboardButton(text="🚖 Taksi haydovchi paneli", web_app=WebAppInfo(url=driver_url))],
         ])
         await with_retry(
-            lambda: message.answer("TaxiGo ga xush kelibsiz!\n\nSiz qanday foydalanmoqchisiz?", reply_markup=kb),
+            lambda: message.answer(
+                "Chortoq Services ga xush kelibsiz!\n\n"
+                "Chortoq tumani uchun yagona transport va texnika xizmatlari platformasi:\n"
+                "🚕 Taksi · 🚐 Po'puti · 🚚 Yuk tashish · 🚜 Spets texnika\n\n"
+                "Bitta akkaunt — bir nechta rol: ham buyurtma bering, ham xizmat ko'rsating.",
+                reply_markup=kb,
+            ),
             label="cmd_start",
         )
 
@@ -37,7 +53,7 @@ def create_bot() -> tuple[Bot, Dispatcher]:
     async def cmd_help(message: Message):
         await with_retry(
             lambda: message.answer(
-                "TaxiGo yordami:\n\n"
+                "Chortoq Services yordami:\n\n"
                 "/start - Botni boshlash\n"
                 "/rides - Oxirgi buyurtmalar\n"
                 "/support - Yordam\n\n"

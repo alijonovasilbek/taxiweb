@@ -12,6 +12,10 @@ from app.database import init_pool, close_pool
 from app.redis_client import init_redis, close_redis
 from app.socket_manager import sio
 from app.routers import auth, users, drivers, orders, payments, ratings, maps, admin
+from app.routers import (
+    catalog, vehicles, schedules, carpool, requests as service_requests, reviews, notifications,
+    search, admin_services,
+)
 
 
 async def _run_bot():
@@ -59,7 +63,7 @@ async def lifespan(app: FastAPI):
     else:
         print("[bot] TELEGRAM_BOT_TOKEN not set or invalid — bot disabled")
 
-    print(f"[server] TaxiGo backend started on port {settings.port}")
+    print(f"[server] Chortoq Services backend started on port {settings.port}")
     yield
 
     # ── Shutdown ──
@@ -71,8 +75,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TaxiGo API",
-    version="1.0.0",
+    title="Chortoq Services API",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -92,7 +96,11 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 
 # API routes
 for r in [auth.router, users.router, drivers.router, orders.router,
-          payments.router, ratings.router, maps.router, admin.router]:
+          payments.router, ratings.router, maps.router, admin.router,
+          # Chortoq Services
+          catalog.router, vehicles.router, schedules.router, carpool.router,
+          service_requests.router, reviews.router, notifications.router, search.router,
+          admin_services.router]:
     app.include_router(r, prefix="/api")
 
 
