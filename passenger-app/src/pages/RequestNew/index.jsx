@@ -7,10 +7,11 @@ import { useAppStore } from '../../store/appStore';
 import { useUserStore } from '../../store/userStore';
 import { DURATION_UNITS } from '../../utils/constants';
 import { apiError, formatPrice, toInputDateTime } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 const META = {
-  cargo: { title: 'Yuk tashish', sub: 'Labo, Gazel, Isuzu va boshqalar', icon: '🚚' },
-  equipment: { title: 'Spets texnika', sub: 'Ekskavator, buldozer, kran, yuklagich', icon: '🚜' },
+  cargo: { title: 'Yuk tashish', sub: 'Labo, Gazel, Isuzu va boshqalar', icon: '' },
+  equipment: { title: 'Spets texnika', sub: 'Ekskavator, buldozer, kran, yuklagich', icon: '' },
 };
 
 export default function RequestNew() {
@@ -71,7 +72,7 @@ export default function RequestNew() {
         budget: num(form.budget),
         phone: form.phone || null,
       });
-      toast('✅ So\'rov yuborildi', `${data.matched_providers} ta mos ijrochiga xabar berildi`);
+      toast('So\'rov yuborildi', `${data.matched_providers} ta mos ijrochiga xabar berildi`);
       navigate(`/requests/${data.id}`, { replace: true });
     } catch (e) {
       toast('Xatolik', apiError(e), 'error');
@@ -81,14 +82,14 @@ export default function RequestNew() {
   };
 
   return (
-    <Page title={`${meta.icon} ${meta.title}`} sub={meta.sub}>
+    <Page title={meta.title} sub={meta.sub}>
       <div className="card">
         <Field label={isCargo ? 'Qanday transport kerak?' : 'Qanday texnika kerak?'}>
           <div className="chips">
             {isCargo && <button className={`chip${!form.vehicle_category ? ' active' : ''}`} onClick={() => set('vehicle_category', '')}>Farqi yo'q</button>}
             {categories.map((c) => (
               <button key={c.code} className={`chip${form.vehicle_category === c.code ? ' active' : ''}`} onClick={() => set('vehicle_category', c.code)}>
-                {c.icon} {c.name}
+                <CategoryGlyph code={c.code} /> {c.name}
               </button>
             ))}
           </div>
@@ -145,7 +146,9 @@ export default function RequestNew() {
         )}
         <div className="grid2">
           <Field label="Byudjetingiz (ixtiyoriy)"><input type="number" step={10000} className="input" value={form.budget} onChange={(e) => set('budget', e.target.value)} /></Field>
-          <Field label="Telefon"><input className="input" value={form.phone} placeholder="+998..." onChange={(e) => set('phone', e.target.value)} /></Field>
+          <Field label="Bog'lanish raqami" hint={user?.phone_verified && form.phone === user.phone ? 'Tasdiqlangan raqamingiz' : 'Boshqa raqam ko‘rsatilgan — ijrochi shu raqamga qo‘ng‘iroq qiladi'}>
+            <input className="input" inputMode="tel" value={form.phone} placeholder="+998..." onChange={(e) => set('phone', e.target.value)} />
+          </Field>
         </div>
         <div className="hint">Ijrochilar narx taklif qiladi — siz eng mosini tanlaysiz. Telefon raqamingiz faqat tanlangan ijrochiga ko'rinadi.</div>
       </div>

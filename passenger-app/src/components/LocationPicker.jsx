@@ -1,17 +1,19 @@
 import React, { useRef, useState } from 'react';
 import api from '../services/api';
 import YandexMap from './Map/YandexMap';
+import MapSearch, { resolvePlace } from './Map/MapSearch';
 import { Modal } from './ui';
 import { CHORTOQ, PRESET_PLACES } from '../utils/constants';
+import { I } from './icons';
 
 const HAS_MAP_KEY = Boolean(import.meta.env.VITE_YANDEX_MAPS_KEY);
 
 async function reverse(loc) {
   try {
     const { data } = await api.get('/maps/reverse-geocode', { params: loc });
-    return data.address || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    return data.address || 'Xaritada belgilangan nuqta';
   } catch {
-    return `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    return 'Xaritada belgilangan nuqta';
   }
 }
 
@@ -44,8 +46,8 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
       const local = PRESET_PLACES.filter((p) => p.address.toLowerCase().includes(t.toLowerCase()));
       let remote = [];
       try {
-        const { data } = await api.post('/maps/suggest', { text: t });
-        remote = data.map((s) => ({ title: s.title, subtitle: s.subtitle }));
+        const { data } = await api.post('/maps/suggest', { text: t, lat: (value || CHORTOQ).lat, lng: (value || CHORTOQ).lng });
+        remote = data;
       } catch {}
       setItems([...local.map((p) => ({ preset: p, title: p.address })), ...remote]);
     }, 350);
@@ -53,10 +55,9 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
 
   const choose = async (item) => {
     if (item.preset) return pick(item.preset);
-    const query = `${item.title}${item.subtitle ? ', ' + item.subtitle : ''}`;
     try {
-      const { data } = await api.get('/maps/geocode', { params: { address: query } });
-      if (data.length) pick({ address: data[0].address, lat: data[0].lat, lng: data[0].lng });
+      const p = await resolvePlace(item, value || CHORTOQ);
+      if (p) pick({ address: p.address, lat: p.lat, lng: p.lng });
     } catch {}
   };
 
@@ -76,7 +77,7 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
 
   const confirmMap = async () => {
     if (!mapPoint) return;
-    pick({ ...mapPoint, address: await reverse(mapPoint) });
+    pick({ lat: mapPoint.lat, lng: mapPoint.lng, address: mapPoint.address || await reverse(mapPoint) });
     setMapOpen(false);
   };
 
@@ -99,10 +100,10 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
       {(items.length > 0 || showPresets) && (
         <div className="suggest">
           {showPresets && (
-            <div className="suggest-item" onMouseDown={useMyLocation}>📍 {locating ? 'Aniqlanmoqda...' : 'Joriy joylashuvim'}</div>
+            <div className="suggest-item" onMouseDown={useMyLocation}><I n="nav" size={16} color="var(--primary)" /> {locating ? 'Aniqlanmoqda...' : 'Joriy joylashuvim'}</div>
           )}
           {showPresets && HAS_MAP_KEY && (
-            <div className="suggest-item" onMouseDown={() => { setMapPoint(value || null); setMapOpen(true); }}>🗺️ Xaritadan tanlash</div>
+            <div className="suggest-item" onMouseDown={() => { setMapPoint(value || null); setMapOpen(true); }}><I n="map" size={16} color="var(--primary)" /> Xaritadan tanlash</div>
           )}
           {(showPresets ? PRESET_PLACES.map((p) => ({ preset: p, title: p.address })) : items).map((it, i) => (
             <div key={i} className="suggest-item" onMouseDown={() => choose(it)}>
@@ -114,7 +115,8 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
       )}
       {mapOpen && (
         <Modal title="Xaritadan belgilang" onClose={() => setMapOpen(false)}>
-          <div style={{ height: 360, borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ height: 380, borderRadius: 14, overflow: 'hidden', position: 'relative' }}>
+            <MapSearch bias={mapPoint || value || CHORTOQ} onPick={(p) => setMapPoint(p)} style={{ top: 10, left: 10, right: 10 }} />
             <YandexMap
               center={mapPoint || value || CHORTOQ}
               zoom={13}
@@ -122,6 +124,7 @@ export default function LocationPicker({ label, value, onChange, placeholder = '
               onMapClick={setMapPoint}
             />
           </div>
+          {mapPoint?.address && <div className="faint mt8 row" style={{ gap: 6 }}><I n="pin" size={14} /> {mapPoint.address}</div>}
           <button className="btn block mt12" disabled={!mapPoint} onClick={confirmMap}>Tanlash</button>
         </Modal>
       )}

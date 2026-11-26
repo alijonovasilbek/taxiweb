@@ -1,10 +1,10 @@
-import os
-import uuid
-
-import aiofiles
 import asyncpg
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from app.services.roles import sync_roles
+from app.services.documents import missing_docs
+from app.security import rate_limit
+from app.services.files import doc_out, save_private_document, save_public_image
 from app.catalog import VEHICLE_CATEGORIES, DOC_TYPES
 from app.config import settings
 from app.database import get_db
@@ -16,23 +16,6 @@ router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
 VEHICLE_SELECT = """SELECT v.*, ST_Y(v.location::geometry) AS lat, ST_X(v.location::geometry) AS lng
                     FROM vehicles v"""
-ALLOWED_UPLOAD = ("image/", "application/pdf")
-
-
-async def save_upload(file: UploadFile, prefix: str) -> str:
-    if not file.content_type or not file.content_type.startswith(ALLOWED_UPLOAD):
-        raise HTTPException(400, "Faqat rasm yoki PDF fayl yuklash mumkin")
-    data = await file.read()
-    if len(data) > settings.max_file_size:
-        raise HTTPException(413, "Fayl hajmi juda katta")
-    ext = os.path.splitext(file.filename or "")[1].lower()[:8] or ".bin"
-    if not ext.replace(".", "").isalnum():
-        ext = ".bin"
-    fname = f"{prefix}_{uuid.uuid4().hex}{ext}"
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    async with aiofiles.open(os.path.join(settings.upload_dir, fname), "wb") as f:
-        await f.write(data)
-    return f"/uploads/{fname}"
 
 
 async def own_vehicle(conn: asyncpg.Connection, vehicle_id: int, user_id: int) -> asyncpg.Record:
@@ -42,22 +25,15 @@ async def own_vehicle(conn: asyncpg.Connection, vehicle_id: int, user_id: int) -
     return row
 
 
-async def ensure_role(conn: asyncpg.Connection, user_id: int, role: str) -> None:
-    await conn.execute(
-        """UPDATE users SET roles = array_append(roles, $2)
-           WHERE id=$1 AND NOT ($2 = ANY(roles))""",
-        user_id, role,
-    )
-
-
 @router.get("/my")
 async def my_vehicles(user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
     rows = await conn.fetch(f"{VEHICLE_SELECT} WHERE v.owner_id=$1 ORDER BY v.created_at DESC", user["id"])
     docs = await conn.fetch("SELECT * FROM user_documents WHERE user_id=$1 ORDER BY created_at DESC", user["id"])
     by_vehicle: dict = {}
     for d in docs:
-        by_vehicle.setdefault(d["vehicle_id"], []).append(dict(d))
-    return [{**row_to_dict(r), "documents": by_vehicle.get(r["id"], [])} for r in rows]
+        by_vehicle.setdefault(d["vehicle_id"], []).append(doc_out(d))
+    return [{**row_to_dict(r), "documents": by_vehicle.get(r["id"], []), "missing_docs": await missing_docs(conn, dict(r))}
+            for r in rows]
 
 
 @router.post("", status_code=201)
@@ -73,7 +49,7 @@ async def create_vehicle(body: VehicleIn, user=Depends(current_user), conn: asyn
     row = await conn.fetchrow(
         f"INSERT INTO vehicles(owner_id, {cols}) VALUES($1, {params}) RETURNING id", user["id"], *data.values()
     )
-    await ensure_role(conn, user["id"], VEHICLE_CATEGORIES[body.category]["role"])
+    await sync_roles(conn, user["id"])
     return row_to_dict(await own_vehicle(conn, row["id"], user["id"]))
 
 
@@ -104,7 +80,7 @@ async def update_vehicle(vehicle_id: int, body: VehicleIn, user=Depends(current_
     await conn.execute(
         f"UPDATE vehicles SET {cols}{status_sql}, updated_at=NOW() WHERE id=$1", vehicle_id, *data.values()
     )
-    await ensure_role(conn, user["id"], VEHICLE_CATEGORIES[body.category]["role"])
+    await sync_roles(conn, user["id"])
     return row_to_dict(await own_vehicle(conn, vehicle_id, user["id"]))
 
 
@@ -118,6 +94,7 @@ async def delete_vehicle(vehicle_id: int, user=Depends(current_user), conn: asyn
     if busy:
         raise HTTPException(409, "Transport faol ishda ishlatilmoqda")
     await conn.execute("DELETE FROM vehicles WHERE id=$1", vehicle_id)
+    await sync_roles(conn, user["id"])
     return {"success": True}
 
 
@@ -139,29 +116,27 @@ async def set_availability(vehicle_id: int, body: VehicleAvailability, user=Depe
     return row_to_dict(await own_vehicle(conn, vehicle_id, user["id"]))
 
 
-@router.post("/{vehicle_id}/photo")
+@router.post("/{vehicle_id}/photo", dependencies=[Depends(rate_limit("upload", 30, 300))])
 async def upload_photo(vehicle_id: int, file: UploadFile = File(...), user=Depends(current_user),
                        conn: asyncpg.Connection = Depends(get_db)):
     await own_vehicle(conn, vehicle_id, user["id"])
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(400, "Faqat rasm yuklash mumkin")
-    url = await save_upload(file, f"vehicle{vehicle_id}")
+    url = await save_public_image(file, f"vehicle{vehicle_id}")
     await conn.execute("UPDATE vehicles SET photo_url=$2, updated_at=NOW() WHERE id=$1", vehicle_id, url)
     return row_to_dict(await own_vehicle(conn, vehicle_id, user["id"]))
 
 
-@router.post("/{vehicle_id}/documents", status_code=201)
+@router.post("/{vehicle_id}/documents", status_code=201, dependencies=[Depends(rate_limit("upload", 30, 300))])
 async def upload_document(vehicle_id: int, doc_type: str = Form(...), file: UploadFile = File(...),
                           user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
     await own_vehicle(conn, vehicle_id, user["id"])
     if doc_type not in DOC_TYPES:
         raise HTTPException(400, "Noma'lum hujjat turi")
-    url = await save_upload(file, f"doc{user['id']}_{doc_type}")
+    url = await save_private_document(file, f"doc{user['id']}_{doc_type}")
     row = await conn.fetchrow(
         "INSERT INTO user_documents(user_id,vehicle_id,doc_type,file_url) VALUES($1,$2,$3,$4) RETURNING *",
         user["id"], vehicle_id, doc_type, url,
     )
-    return dict(row)
+    return doc_out(row)
 
 
 @router.get("/by-owner/{owner_id}")

@@ -4,6 +4,7 @@ import api from '../../services/api';
 import { Page, Field, Spinner } from '../../components/ui';
 import { useAppStore } from '../../store/appStore';
 import { apiError } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 const EMPTY = {
   category: '', model: '', plate_number: '', color: '', year: '', seats: '', capacity_kg: '', volume_m3: '',
@@ -11,9 +12,9 @@ const EMPTY = {
 };
 
 const GROUPS = [
-  { title: '🚗 Yo\'lovchi tashish', codes: ['sedan', 'minivan', 'bus'] },
-  { title: '🚚 Yuk tashish', codes: ['damas', 'labo', 'gazel', 'isuzu', 'kamaz', 'dump_truck'] },
-  { title: '🚜 Spets texnika', codes: ['excavator', 'bulldozer', 'crane', 'loader', 'tractor', 'concrete_mixer'] },
+  { title: 'Yo\'lovchi tashish', codes: ['sedan', 'minivan', 'bus'] },
+  { title: 'Yuk tashish', codes: ['damas', 'labo', 'gazel', 'isuzu', 'kamaz', 'dump_truck'] },
+  { title: 'Spets texnika', codes: ['excavator', 'bulldozer', 'crane', 'loader', 'tractor', 'concrete_mixer'] },
 ];
 
 export default function VehicleForm() {
@@ -55,7 +56,7 @@ export default function VehicleForm() {
     try {
       if (vehicleId) await api.put(`/vehicles/${vehicleId}`, body);
       else await api.post('/vehicles', body);
-      toast(vehicleId ? 'Saqlandi' : '✅ Transport qo\'shildi', vehicleId ? '' : 'Admin tasdiqlagach buyurtmalar ola boshlaysiz');
+      toast(vehicleId ? 'Saqlandi' : 'Transport qo\'shildi', vehicleId ? '' : 'Admin tasdiqlagach buyurtmalar ola boshlaysiz');
       navigate('/vehicles', { replace: true });
     } catch (e) {
       toast('Xatolik', apiError(e), 'error');
@@ -77,7 +78,7 @@ export default function VehicleForm() {
               {g.codes.map((code) => {
                 const c = category(code);
                 if (!c) return null;
-                return <button key={code} className={`chip${form.category === code ? ' active' : ''}`} onClick={() => set('category', code)}>{c.icon} {c.name}</button>;
+                return <button key={code} className={`chip${form.category === code ? ' active' : ''}`} onClick={() => set('category', code)}><CategoryGlyph code={code} /> {c.name}</button>;
               })}
             </div>
           </div>

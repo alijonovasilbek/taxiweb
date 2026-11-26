@@ -81,6 +81,25 @@ moslik bilan), spets texnika oqimi (jadval, ijrochining voz kechishi), po'puti (
 holatlar), smart search, tariflar va admin funksiyalarini tekshiradi. Testlar o'zi yaratgan
 ma'lumotlarni o'chirib ketadi.
 
+### Lokal sinov (Windows, bitta buyruq)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-local.ps1          # Docker → migratsiya → backend (qo'riqchi bilan) → ngrok
+powershell -ExecutionPolicy Bypass -File scripts\start-local.ps1 -Build   # avval passenger-app va admin-panel build
+powershell -ExecutionPolicy Bypass -File scripts\stop-local.ps1           # to'xtatish (-Docker — konteynerlar ham)
+powershell -ExecutionPolicy Bypass -File scriptsackup-db.ps1            # DB zaxira nusxasi → backups/
+```
+
+Sozlamalar: loyiha ildizidagi `.env` (umumiy kalitlar) + `backend/.env` (lokal, ustun). Mini App xarita kaliti — `passenger-app/.env.local` (`VITE_YANDEX_MAPS_KEY`).
+
+Xavfsizlik qoidalari:
+- `dev-login` va `phone/dev` faqat `DEV_MODE=true` **va** lokal so'rovda ishlaydi (ngrok/nginx orqali — 403).
+- Admin panel: Telegram ichida avtomatik, brauzerda — Telegram ID → bot yuborgan 6 xonali kod.
+- Ijrochi rollari admin tasdiqlagan transportdan kelib chiqadi; tasdiqlash uchun majburiy hujjatlar: pasport, guvohnoma (haydovchi/yuk), texpasport.
+- Taksi: admin taksiga mos transportni tasdiqlasa, foydalanuvchi Mini App'ning ijrochi rejimidagi **Taksi** bo'limida buyurtma qabul qiladi (alohida `driver-app` shart emas).
+
+Kamchiliklar va ularning holati: [KAMCHILIKLAR.md](KAMCHILIKLAR.md).
+
 ## Ma'lumotlar modeli (asosiy jadvallar)
 
 | Jadval | Vazifasi |

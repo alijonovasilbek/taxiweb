@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { Header, Table, Pager, Badge, Btn, Select, Input, Drawer, KV, Card, StatusBadge, ROLE, CATEGORY, fmtDate } from '../../components/ui';
+import { Header, Table, Pager, Badge, Btn, Select, Input, Drawer, KV, Card, StatusBadge, ROLE, CATEGORY, fmtDate, Rating } from '../../components/ui';
 
 function UserDrawer({ id, onClose, onChanged }) {
   const [u, setU] = useState(null);
@@ -40,10 +40,10 @@ function UserDrawer({ id, onClose, onChanged }) {
         </Card>
       ))}
       <h3 style={{ fontSize: 15 }}>Oxirgi sharhlar</h3>
-      {u.reviews.length === 0 && <div style={{ color: '#94A3B8', fontSize: 13 }}>Sharhlar yo'q</div>}
+      {u.reviews.length === 0 && <div style={{ color: 'var(--faint)', fontSize: 13 }}>Sharhlar yo'q</div>}
       {u.reviews.map((r) => (
         <Card key={r.id} style={{ marginBottom: 8, padding: 14 }}>
-          <div>{'⭐'.repeat(r.rating)} <span style={{ color: '#64748B', fontSize: 12 }}>{r.service_type} · {fmtDate(r.created_at)}</span></div>
+          <div><span style={{ color: '#ff9f0a', letterSpacing: 1 }}>{'★'.repeat(r.rating)}</span> <span style={{ color: 'var(--muted)', fontSize: 12 }}>{r.service_type} · {fmtDate(r.created_at)}</span></div>
           {r.comment && <div style={{ fontSize: 13, marginTop: 4 }}>{r.comment}</div>}
         </Card>
       ))}
@@ -71,12 +71,12 @@ export default function Users() {
         </>
       } />
       <Table rows={data.users} onRowClick={(r) => setOpen(r.id)} columns={[
-        { title: '#', render: (r) => <span style={{ color: '#94A3B8' }}>{r.id}</span> },
+        { title: '#', render: (r) => <span style={{ color: 'var(--faint)' }}>{r.id}</span> },
         { title: 'Ism', render: (r) => <b>{r.first_name} {r.last_name || ''}</b> },
         { title: 'Telefon', render: (r) => r.phone || '—' },
         { title: 'Rollar', render: (r) => <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(r.roles || []).map((x) => <Badge key={x} color={x === 'client' ? 'gray' : 'blue'}>{ROLE[x] || x}</Badge>)}</div> },
         { title: 'Transport', render: (r) => r.vehicles_count },
-        { title: 'Reyting', render: (r) => `⭐ ${Number(r.provider_rating).toFixed(1)}` },
+        { title: 'Reyting', render: (r) => <Rating value={r.provider_rating} /> },
         { title: 'Holat', render: (r) => (r.is_blocked ? <Badge color="red">Bloklangan</Badge> : <Badge color="green">Faol</Badge>) },
         { title: 'Sana', render: (r) => fmtDate(r.created_at) },
       ]} />

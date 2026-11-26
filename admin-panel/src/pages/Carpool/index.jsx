@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { Header, Table, Pager, Btn, Select, StatusBadge, fmtMoney, fmtDate } from '../../components/ui';
+import { I } from '../../components/icons';
 
 const DAYS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 
@@ -25,10 +26,10 @@ export default function Carpool() {
           options={[['active', 'Faol'], ['full', 'To\'lgan'], ['departed', 'Yo\'lda'], ['completed', 'Yakunlangan'], ['cancelled', 'Bekor']]} />
       } />
       <Table rows={data.trips} columns={[
-        { title: '#', render: (t) => <span style={{ color: '#94A3B8' }}>{t.id}</span> },
-        { title: 'Yo\'nalish', render: (t) => <div><b>{t.from_address}</b><div style={{ color: '#64748B' }}>→ {t.to_address}</div></div> },
-        { title: 'Jo\'nash', render: (t) => <div>{fmtDate(t.departure_at)}{t.recurring_days?.length > 0 && <div style={{ color: '#64748B', fontSize: 12 }}>🔁 {t.recurring_days.map((d) => DAYS[d]).join(',')}</div>}</div> },
-        { title: 'Haydovchi', render: (t) => <div>{t.driver_name}<div style={{ color: '#64748B' }}>{t.driver_phone || ''}</div></div> },
+        { title: '#', render: (t) => <span style={{ color: 'var(--faint)' }}>{t.id}</span> },
+        { title: 'Yo\'nalish', render: (t) => <div><b>{t.from_address}</b><div style={{ color: 'var(--muted)' }}>→ {t.to_address}</div></div> },
+        { title: 'Jo\'nash', render: (t) => <div>{fmtDate(t.departure_at)}{t.recurring_days?.length > 0 && <div style={{ color: 'var(--muted)', fontSize: 12 }}><I n="repeat" size={12} /> {t.recurring_days.map((d) => DAYS[d]).join(',')}</div>}</div> },
+        { title: 'Haydovchi', render: (t) => <div>{t.driver_name}<div style={{ color: 'var(--muted)' }}>{t.driver_phone || ''}</div></div> },
         { title: 'O\'rinlar', render: (t) => `${t.seats_available} / ${t.seats_total}` },
         { title: 'Narx', render: (t) => fmtMoney(t.price_per_seat) },
         { title: 'Bronlar', render: (t) => t.bookings_count },

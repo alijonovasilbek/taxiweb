@@ -18,6 +18,15 @@ async def create(body: RatingRequest, user=Depends(get_current_user), conn: asyn
     if existing:
         raise HTTPException(409, "Already rated")
 
+    # Faqat shu buyurtma ishtirokchisi baho qo'ya oladi (begona odam reytingni buzolmasin)
+    if body.target_role == "driver":
+        if order["passenger_id"] != user.get("id"):
+            raise HTTPException(403, "Faqat shu safar yo'lovchisi baho qo'ya oladi")
+    else:
+        drv = await conn.fetchval("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+        if not drv or drv != order["driver_id"]:
+            raise HTTPException(403, "Faqat shu safar haydovchisi baho qo'ya oladi")
+
     if body.target_role == "driver":
         await conn.execute(
             "INSERT INTO ratings(order_id,rater_id,rated_driver_id,rating,comment) VALUES($1,$2,$3,$4,$5)",

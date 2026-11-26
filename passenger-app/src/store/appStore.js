@@ -7,6 +7,9 @@ export const useAppStore = create((set, get) => ({
   catalog: null,
   unread: 0,
   toasts: [],
+  // Rejim: mijoz yoki ijrochi (Uber/Yandex Go kabi bitta akkaunt — ikki interfeys)
+  mode: (() => { try { return localStorage.getItem('cs_mode') || 'client'; } catch { return 'client'; } })(),
+  setMode: (mode) => { try { localStorage.setItem('cs_mode', mode); } catch {} set({ mode }); },
 
   loadCatalog: async () => {
     if (get().catalog) return get().catalog;

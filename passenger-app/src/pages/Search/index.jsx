@@ -8,12 +8,13 @@ import { formatDistance, formatPrice, toInputDate, apiError } from '../../utils/
 import { CHORTOQ } from '../../utils/constants';
 import { TripCard } from '../Carpool';
 import { RequestCard } from '../Orders';
+import { I, ServiceGlyph, CategoryIcon, ServiceIcon } from '../../components/icons';
 
 const SERVICES = [
-  { value: 'carpool', label: '🚐 Po\'puti' },
-  { value: 'cargo', label: '🚚 Yuk' },
-  { value: 'equipment', label: '🚜 Texnika' },
-  { value: 'taxi', label: '🚕 Taksi' },
+  { value: 'carpool', label: <><ServiceGlyph code="carpool" /> Po'puti</> },
+  { value: 'cargo', label: <><ServiceGlyph code="cargo" /> Yuk</> },
+  { value: 'equipment', label: <><ServiceGlyph code="equipment" /> Texnika</> },
+  { value: 'taxi', label: <><ServiceGlyph code="taxi" /> Taksi</> },
 ];
 
 export default function Search() {
@@ -62,11 +63,11 @@ export default function Search() {
       <div className="card">
         <div className="row">
           <input className="input" value={q} placeholder="Labo, ekskavator, Namangan..." onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} />
-          <button className="btn" onClick={run}>🔎</button>
+          <button className="btn" onClick={run} aria-label="Qidirish" style={{ padding: '12px 14px' }}><I n="search" size={20} /></button>
         </div>
         <div className="mt12"><Chips value={service} onChange={(v) => { setService(v); setCat(null); }} allLabel="Barchasi" items={SERVICES} /></div>
-        {cats.length > 0 && <div className="mt8"><Chips value={cat} onChange={setCat} allLabel="Har qanday" items={cats.map((c) => ({ value: c.code, label: `${c.icon} ${c.name}` }))} /></div>}
-        <button className="btn ghost sm mt12" onClick={() => setShowFilters((s) => !s)}>⚙️ Filtrlar {showFilters ? '▲' : '▼'}</button>
+        {cats.length > 0 && <div className="mt8"><Chips value={cat} onChange={setCat} allLabel="Har qanday" items={cats.map((c) => ({ value: c.code, label: c.name }))} /></div>}
+        <button className="btn ghost sm mt12" onClick={() => setShowFilters((s) => !s)}><I n="filter" size={15} /> Filtrlar <I n={showFilters ? 'up' : 'down'} size={15} /></button>
         {showFilters && (
           <div className="mt12">
             <LocationPicker label="Qayerda kerak" value={place} onChange={setPlace} placeholder="Standart: Chortoq markazi" />
@@ -76,7 +77,7 @@ export default function Search() {
             </div>
             <Field label="Maksimal narx, so'm"><input type="number" className="input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} /></Field>
             <Field label="Minimal reyting">
-              <Chips value={minRating} onChange={setMinRating} allLabel="Farqi yo'q" items={[3, 4, 4.5].map((r) => ({ value: r, label: `⭐ ${r}+` }))} />
+              <Chips value={minRating} onChange={setMinRating} allLabel="Farqi yo'q" items={[3, 4, 4.5].map((r) => ({ value: r, label: <><I n="star" size={14} className={minRating === r ? '' : 'star-ico'} /> {r}+</> }))} />
             </Field>
             <div className="between mb12">
               <span className="muted">Faqat hozir bo'shlar</span>
@@ -91,12 +92,12 @@ export default function Search() {
       {!loading && result && (
         <>
           {result.cross_service_tips?.length > 0 && result.cross_service_tips.map((t, i) => (
-            <div key={i} className="card row" style={{ background: 'var(--accent-soft)' }}><span>💡</span><span className="muted grow">{t}</span></div>
+            <div key={i} className="card row" style={{ alignItems: 'flex-start' }}><I n="idea" size={20} color="var(--orange)" /><span className="muted grow">{t}</span></div>
           ))}
 
           {(service === null || service === 'taxi') && result.taxi_nearby !== undefined && (
             <div className="card clickable row" onClick={() => navigate('/book')}>
-              <div className="icon-box" style={{ background: 'var(--accent-soft)' }}>🚕</div>
+              <ServiceIcon code="taxi" size={40} />
               <div className="grow"><div className="bold">Taksi</div><div className="faint">Yaqin atrofda {result.taxi_nearby} ta bo'sh haydovchi</div></div>
               <span className="btn sm">Chaqirish</span>
             </div>
@@ -108,15 +109,19 @@ export default function Search() {
             return (
               <div key={p.id} className="card clickable" onClick={() => navigate(`/users/${p.owner_id}`)}>
                 <div className="row">
-                  <div className="score">{Math.round(p.score)}<small>ball</small></div>
+                  <CategoryIcon code={p.category} size={44} />
                   <div className="grow">
-                    <div className="bold ellipsis">{c?.icon} {c?.name} · {p.model}</div>
+                    <div className="bold ellipsis">{p.model || c?.name}</div>
+                    <div className="faint ellipsis">{c?.name}</div>
                     <div className="row" style={{ gap: 6 }}>
                       <span className="faint">{p.first_name}</span>
                       <Rating value={p.provider_rating} count={p.provider_reviews} />
                     </div>
                   </div>
-                  {p.distance_km !== null && <span className="badge gray">{formatDistance(p.distance_km)}</span>}
+                  <div className="col" style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <span className="badge green">{Math.round(p.score)}% mos</span>
+                    {p.distance_km !== null && <span className="faint">{formatDistance(p.distance_km)}</span>}
+                  </div>
                 </div>
                 <div className="row mt8" style={{ flexWrap: 'wrap', gap: 6 }}>
                   <span className={`badge ${p.availability === 'hozir band' ? 'red' : p.availability === 'jadvaldan tashqari vaqt' ? 'orange' : 'green'}`}>{p.availability}</span>
@@ -129,7 +134,7 @@ export default function Search() {
           })}
           {(service === 'cargo' || service === 'equipment') && (
             <button className="btn block mb12" onClick={() => navigate(`/requests/new/${service}`)}>
-              📝 So'rov yuborish — ijrochilar o'zi taklif bersin
+              <I n="send" size={17} /> So'rov yuborish — ijrochilar o'zi taklif bersin
             </button>
           )}
 
@@ -140,7 +145,7 @@ export default function Search() {
           {result.open_requests?.slice(0, 5).map((r) => <RequestCard key={r.id} r={r} onClick={() => navigate(`/requests/${r.id}`)} />)}
 
           {!result.providers?.length && !result.trips?.length && !result.open_requests?.length && (
-            <Empty icon="🔍" title="Hech narsa topilmadi" text="Filtrlarni o'zgartiring yoki so'rov yuboring" />
+            <Empty icon="search" title="Hech narsa topilmadi" text="Filtrlarni o'zgartiring yoki so'rov yuboring" />
           )}
         </>
       )}

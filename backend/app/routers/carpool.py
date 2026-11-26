@@ -46,12 +46,17 @@ async def create_trip(body: TripIn, user=Depends(current_user), conn: asyncpg.Co
     departure = to_local_naive(body.departure_at)
     if departure < local_now() - timedelta(minutes=5):
         raise HTTPException(400, "Jo'nash vaqti o'tib ketgan")
+    # Qatnov faqat admin tasdiqlagan transport bilan ochiladi
+    if not body.vehicle_id:
+        raise HTTPException(400, "Qatnov uchun tasdiqlangan transportingizni tanlang")
     if body.vehicle_id:
         v = await conn.fetchrow(
             "SELECT * FROM vehicles WHERE id=$1 AND owner_id=$2", body.vehicle_id, user["id"]
         )
         if not v:
             raise HTTPException(404, "Transport topilmadi")
+        if v["status"] != "approved":
+            raise HTTPException(403, "Transport hali admin tomonidan tasdiqlanmagan")
         if "carpool" not in VEHICLE_CATEGORIES[v["category"]]["services"]:
             raise HTTPException(400, "Bu transport po'puti uchun mos emas")
         if v["seats"] and body.seats_total > v["seats"]:
@@ -66,9 +71,6 @@ async def create_trip(body: TripIn, user=Depends(current_user), conn: asyncpg.Co
                   $9,$10,$10,$11,$12::smallint[],$13,$14) RETURNING id""",
         user["id"], body.vehicle_id, f.address, f.lat, f.lng, t.address, t.lat, t.lng,
         departure, body.seats_total, body.price_per_seat, body.recurring_days, body.allow_parcels, body.note,
-    )
-    await conn.execute(
-        "UPDATE users SET roles=array_append(roles,'driver') WHERE id=$1 AND NOT ('driver' = ANY(roles))", user["id"]
     )
     return row_to_dict(await _trip(conn, row["id"]))
 

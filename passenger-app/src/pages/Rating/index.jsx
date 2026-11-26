@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useOrderStore } from '../../store/orderStore';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 export default function Rating() {
   const { orderId } = useParams();
@@ -22,7 +23,7 @@ export default function Rating() {
 
   if (submitted) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <div style={{ fontSize: 60 }}>✅</div>
+      <I n="done" size={64} color="var(--green)" />
       <div style={{ fontSize: 20, fontWeight: 600, marginTop: 12 }}>Rahmat!</div>
       <div style={{ color: '#888', marginTop: 4 }}>Bahoingiz qabul qilindi</div>
     </div>
@@ -30,7 +31,7 @@ export default function Rating() {
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ fontSize: 48, marginBottom: 12 }}>🚗</div>
+      <div style={{ marginBottom: 12 }}><ServiceIcon code="taxi" size={64} /></div>
       <h2 style={{ marginBottom: 6 }}>Sayohat tugadi!</h2>
       <p style={{ color: '#888', marginBottom: 24 }}>Haydovchini baholang</p>
 
@@ -38,7 +39,7 @@ export default function Rating() {
         {[1, 2, 3, 4, 5].map((star) => (
           <span key={star} onClick={() => setRating(star)}
             style={{ fontSize: 40, cursor: 'pointer', opacity: star <= rating ? 1 : 0.3 }}>
-            ⭐
+            <I n="star" size={40} color={star <= rating ? 'var(--orange)' : '#d1d1d6'} style={{ fill: star <= rating ? 'var(--orange)' : 'none' }} />
           </span>
         ))}
       </div>
@@ -53,7 +54,7 @@ export default function Rating() {
 
       <button onClick={handleSubmit} style={{
         width: '100%', padding: 15, fontSize: 16, fontWeight: 600,
-        background: 'var(--tg-theme-button-color, #2196F3)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
+        background: 'var(--grad)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
       }}>
         Baholash
       </button>

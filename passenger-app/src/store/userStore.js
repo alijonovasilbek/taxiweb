@@ -23,6 +23,14 @@ export const useUserStore = create((set, get) => ({
       set({ token: data.token, user: data.user, isLoading: false });
       get().fetchMe();
     } catch (err) {
+      // initData yaroqsiz/eskirgan bo'lsa ham saqlangan token hali ishlashi mumkin — uni sinab ko'ramiz
+      if (get().token) {
+        set({ isLoading: false, error: null });
+        const me = await get().fetchMe();
+        if (me) return;
+        localStorage.removeItem('taxigo_token');
+        set({ token: null });
+      }
       const detail = err?.response?.data?.detail;
       set({ isLoading: false, error: typeof detail === 'string' ? detail : null });
     }
@@ -33,7 +41,11 @@ export const useUserStore = create((set, get) => ({
       const { data } = await api.get('/users/me');
       set({ user: data });
       return data;
-    } catch {
+    } catch (err) {
+      if (!get().user) {
+        const detail = err?.response?.data?.detail;
+        set({ error: typeof detail === 'string' ? detail : "Server bilan aloqa yo'q" });
+      }
       return null;
     }
   },

@@ -16,13 +16,13 @@ function TariffRow({ t, onSaved, onDelete }) {
     onSaved();
   };
   return (
-    <tr style={{ borderTop: '1px solid #F1F5F9' }}>
+    <tr style={{ borderTop: '1px solid var(--line)' }}>
       <td style={{ padding: '8px 10px', fontSize: 13, whiteSpace: 'nowrap' }}>{SERVICE[t.service_type] || t.service_type}</td>
       <td style={{ padding: '8px 10px', fontSize: 13, whiteSpace: 'nowrap' }}>{CATEGORY[t.vehicle_category] || 'Umumiy'}</td>
       {FIELDS.map(([k]) => (
         <td key={k} style={{ padding: '6px 4px' }}>
           <input type="number" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-            style={{ width: 92, padding: '6px 8px', borderRadius: 6, border: '1.5px solid #E2E8F0', fontSize: 13 }} />
+            style={{ width: 92, padding: '6px 8px', borderRadius: 6, border: '1.5px solid var(--line)', fontSize: 13 }} />
         </td>
       ))}
       <td style={{ padding: '6px 8px' }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /></td>
@@ -64,7 +64,7 @@ export default function Services() {
               <div style={{ fontSize: 15, fontWeight: 700 }}>{s.icon} {s.name}</div>
               {s.is_active ? <Badge color="green">Faol</Badge> : <Badge color="gray">O'chiq</Badge>}
             </div>
-            <div style={{ fontSize: 12, color: '#64748B', margin: '6px 0 12px', minHeight: 32 }}>{s.description}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 12px', minHeight: 32 }}>{s.description}</div>
             <Btn kind={s.is_active ? 'ghost' : 'green'} onClick={() => toggle(s.code, !s.is_active)}>{s.is_active ? 'O\'chirish' : 'Yoqish'}</Btn>
           </Card>
         ))}
@@ -74,7 +74,7 @@ export default function Services() {
         <div style={{ padding: '16px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 700 }}>Narx qoidalari (so'm)</div>
-            <div style={{ fontSize: 12, color: '#64748B' }}>Taxminiy narx = boshlang'ich + masofa × km narxi + muddat × soat/smena/kun narxi; minimaldan kam bo'lmaydi. Taksi tarifi — alohida "Tarif" sahifasida.</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Taxminiy narx = boshlang'ich + masofa × km narxi + muddat × soat/smena/kun narxi; minimaldan kam bo'lmaydi. Taksi tarifi — alohida "Tarif" sahifasida.</div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <Select value={newSvc} onChange={(v) => setNewSvc(v || 'cargo')} options={[['carpool', 'Po\'puti'], ['cargo', 'Yuk tashish'], ['equipment', 'Spets texnika']]} />
@@ -84,9 +84,9 @@ export default function Services() {
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
           <thead>
-            <tr style={{ background: '#F8FAFC' }}>
+            <tr style={{ background: '#fafafc' }}>
               {['Servis', 'Kategoriya', ...FIELDS.map(([, l]) => l), 'Faol', ''].map((h) => (
-                <th key={h} style={{ padding: '10px', textAlign: 'left', fontSize: 12, color: '#64748B', fontWeight: 600 }}>{h}</th>
+                <th key={h} style={{ padding: '10px', textAlign: 'left', fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -94,7 +94,7 @@ export default function Services() {
             {tariffs.map((t) => <TariffRow key={`${t.id}-${t.updated_at}`} t={t} onSaved={load} onDelete={remove} />)}
           </tbody>
         </table>
-        <div style={{ padding: 12, fontSize: 12, color: '#94A3B8' }}>Oxirgi o'zgarish: {fmtDate(tariffs.map((t) => t.updated_at).sort().pop())}</div>
+        <div style={{ padding: 12, fontSize: 12, color: 'var(--faint)' }}>Oxirgi o'zgarish: {fmtDate(tariffs.map((t) => t.updated_at).sort().pop())}</div>
       </Card>
     </div>
   );

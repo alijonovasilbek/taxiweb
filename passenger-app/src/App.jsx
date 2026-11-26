@@ -1,30 +1,34 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useTelegram } from './hooks/useTelegram';
 import { useUserStore } from './store/userStore';
 import { useAppStore } from './store/appStore';
 import { getSocket } from './services/socket';
+import { applyTheme } from './utils/theme';
 import { Toasts, Spinner } from './components/ui';
 import Home from './pages/Home';
-import BookRide from './pages/BookRide';
-import Tracking from './pages/Tracking';
-import Payment from './pages/Payment';
-import Rating from './pages/Rating';
-import History from './pages/History';
-import Profile from './pages/Profile';
-import Carpool from './pages/Carpool';
-import CarpoolNew from './pages/CarpoolNew';
-import TripDetail from './pages/TripDetail';
-import RequestNew from './pages/RequestNew';
-import RequestDetail from './pages/RequestDetail';
-import Orders from './pages/Orders';
-import Provider from './pages/Provider';
-import Vehicles from './pages/Vehicles';
-import VehicleForm from './pages/VehicleForm';
-import Schedule from './pages/Schedule';
-import Search from './pages/Search';
-import Notifications from './pages/Notifications';
-import PublicProfile from './pages/PublicProfile';
+const BookRide = lazy(() => import('./pages/BookRide'));
+const Tracking = lazy(() => import('./pages/Tracking'));
+const Payment = lazy(() => import('./pages/Payment'));
+const Rating = lazy(() => import('./pages/Rating'));
+const History = lazy(() => import('./pages/History'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Carpool = lazy(() => import('./pages/Carpool'));
+const CarpoolNew = lazy(() => import('./pages/CarpoolNew'));
+const TripDetail = lazy(() => import('./pages/TripDetail'));
+const RequestNew = lazy(() => import('./pages/RequestNew'));
+const RequestDetail = lazy(() => import('./pages/RequestDetail'));
+const Orders = lazy(() => import('./pages/Orders'));
+const Provider = lazy(() => import('./pages/Provider'));
+const Vehicles = lazy(() => import('./pages/Vehicles'));
+const VehicleForm = lazy(() => import('./pages/VehicleForm'));
+const Schedule = lazy(() => import('./pages/Schedule'));
+const Search = lazy(() => import('./pages/Search'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const TaxiDriver = lazy(() => import('./pages/TaxiDriver'));
+import Onboarding from './pages/Onboarding';
+import { I, ServiceIcon } from './components/icons';
 
 const NOTIFY_LINK = (n) => {
   const d = n.data || {};
@@ -54,25 +58,29 @@ function RealtimeBridge() {
 
 export default function App() {
   const { tg, initData } = useTelegram();
-  const { login, isLoading, token, error } = useUserStore();
+  const { login, fetchMe, isLoading, token, user, error } = useUserStore();
 
   useEffect(() => {
     tg.expand();
     tg.ready();
+    // Mavzu: Telegram tungi/kunduzgi rejimi (Telegram'dan tashqarida — tizim sozlamasi)
+    applyTheme();
+    try { tg.onEvent?.('themeChanged', applyTheme); } catch {}
     if (initData) login(initData);
+    else if (token) fetchMe();
   }, [initData]);
 
-  if (isLoading || (!token && initData && !error)) return (
+  if (isLoading || (!token && initData && !error) || (token && !user && !error)) return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 8 }}>
-      <div style={{ fontSize: 44 }}>🚖</div>
+      <ServiceIcon code="taxi" size={64} />
       <div className="bold">Chortoq Services</div>
       <Spinner />
     </div>
   );
 
-  if (!token) return (
+  if (!token || !user) return (
     <div style={{ padding: 24, textAlign: 'center', marginTop: '30vh' }}>
-      <div style={{ fontSize: 44 }}>🔐</div>
+      <I n="lock" size={44} color="var(--muted)" />
       <p className="bold mt8">{error || 'Telegram orqali kirish kerak'}</p>
       <p className="muted mt8">Ilovani Telegram bot orqali oching</p>
     </div>
@@ -82,6 +90,8 @@ export default function App() {
     <BrowserRouter>
       <RealtimeBridge />
       <Toasts />
+      {!user.phone_verified || !user.onboarded_at ? <Onboarding /> : (
+      <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', paddingTop: '40vh' }}><Spinner /></div>}>
       <Routes>
         <Route path="/" element={<Home />} />
         {/* Taksi */}
@@ -101,6 +111,7 @@ export default function App() {
         {/* Umumiy */}
         <Route path="/orders" element={<Orders />} />
         <Route path="/provider" element={<Provider />} />
+        <Route path="/taxi-driver" element={<TaxiDriver />} />
         <Route path="/vehicles" element={<Vehicles />} />
         <Route path="/vehicles/new" element={<VehicleForm />} />
         <Route path="/vehicles/:vehicleId/edit" element={<VehicleForm />} />
@@ -111,6 +122,8 @@ export default function App() {
         <Route path="/users/:userId" element={<PublicProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
+      )}
     </BrowserRouter>
   );
 }

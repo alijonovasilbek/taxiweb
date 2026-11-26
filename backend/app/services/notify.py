@@ -2,6 +2,7 @@
 import asyncio
 import json
 
+from app.log import log
 from app.services.bot_retry import with_retry
 
 
@@ -32,7 +33,7 @@ async def notify(
             )
             tg_id = await conn.fetchval("SELECT telegram_id FROM users WHERE id=$1", user_id)
     except Exception as e:  # pragma: no cover
-        print(f"[notify] db error: {e}")
+        log.warning(f"[notify] db error: {e}")
 
     room = f"user:{user_id}"
     try:
@@ -51,7 +52,11 @@ async def notify(
         if event:
             await sio.emit(event, payload, room=room)
     except Exception as e:  # pragma: no cover
-        print(f"[notify] socket error: {e}")
+        log.warning(f"[notify] socket error: {e}")
+
+    # Android ilova (FCM): ilova yopiq bo'lsa ham bildirishnoma keladi
+    from app.services import push
+    push.fire(user_id, {"type": type_, "event": event or "", "link": link or "", **payload}, title=title, body=message)
 
     if telegram and tg_id:
         asyncio.create_task(_send_telegram(tg_id, f"{title}\n\n{message}", link))
@@ -72,7 +77,7 @@ async def _send_telegram(telegram_id: int, text: str, link: str | None) -> None:
         ]])
         await with_retry(lambda: _bot.send_message(telegram_id, text, reply_markup=kb), label="notify")
     except Exception as e:
-        print(f"[notify] telegram error: {e}")
+        log.warning(f"[notify] telegram error: {e}")
 
 
 async def notify_many(user_ids, type_: str, title: str, message: str, data: dict | None = None, **kw) -> None:

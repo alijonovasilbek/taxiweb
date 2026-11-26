@@ -44,7 +44,7 @@ export default function Notifications() {
   return (
     <Page title="Bildirishnomalar" right={items?.some((n) => !n.is_read) && <button className="btn sm accent" onClick={readAll}>Hammasini o'qish</button>}>
       {!items && <Spinner />}
-      {items?.length === 0 && <Empty icon="🔔" title="Bildirishnomalar yo'q" />}
+      {items?.length === 0 && <Empty icon="bell" title="Bildirishnomalar yo'q" />}
       {items?.map((n) => (
         <div key={n.id} className="card clickable" onClick={() => open(n)} style={{ borderLeft: n.is_read ? 'none' : '4px solid var(--primary)' }}>
           <div className="between">

@@ -1,4 +1,5 @@
 import socketio
+from app.log import log
 from app.config import settings
 from app.auth import decode_token
 
@@ -17,9 +18,19 @@ async def connect(sid, environ, auth):
         return False
     try:
         payload = decode_token(token)
-        await sio.save_session(sid, payload)
     except Exception:
-        return False
+        try:  # admin panel tokeni alohida kalit bilan imzolangan
+            from app.config import settings
+            payload = decode_token(token, settings.admin_jwt_secret or settings.jwt_secret)
+            if payload.get("role") != "admin":
+                return False
+        except Exception:
+            return False
+    if payload.get("sid"):
+        from app.auth import session_revoked
+        if await session_revoked(payload["sid"]):
+            return False
+    await sio.save_session(sid, payload)
 
     role = payload.get("role")
     if role == "driver":
@@ -36,8 +47,18 @@ async def connect(sid, environ, auth):
     # Chortoq Services: yagona foydalanuvchi xonasi (barcha servislar bildirishnomalari)
     if payload.get("id"):
         await sio.enter_room(sid, f"user:{payload['id']}")
+        # Yagona akkaunt: tasdiqlangan taksi haydovchisi bo'lsa — haydovchi xonasi ham (new_order va h.k.)
+        if not payload.get("driver_id") and payload.get("telegram_id"):
+            from app.database import pool
+            async with pool.acquire() as conn:
+                drv = await conn.fetchrow(
+                    "SELECT id FROM drivers WHERE telegram_id=$1 AND status='approved'", payload["telegram_id"]
+                )
+            if drv:
+                await sio.save_session(sid, {**payload, "driver_id": drv["id"]})
+                await sio.enter_room(sid, f"driver:{drv['id']}")
 
-    print(f"[socket] connected {sid} role={role}")
+    log.info(f"[socket] connected {sid} role={role}")
 
 
 @sio.event
@@ -52,7 +73,7 @@ async def disconnect(sid):
                     await conn.execute(
                         "UPDATE drivers SET is_online=false WHERE id=$1", driver_id
                     )
-    print(f"[socket] disconnected {sid}")
+    log.info(f"[socket] disconnected {sid}")
 
 
 # ─── Driver events ────────────────────────────────────────────────────────────
@@ -98,39 +119,15 @@ async def driver_location_update(sid, data):
     driver_id = session.get("driver_id")
     if not driver_id:
         return
-    lat, lng = data.get("lat"), data.get("lng")
-    import json
+    try:
+        point = {"lat": float(data["lat"]), "lng": float(data["lng"]),
+                 "heading": data.get("heading"), "speed": data.get("speed")}
+    except (KeyError, TypeError, ValueError):
+        return
     from app.database import pool
-    from app.redis_client import redis
-
-    await redis.setex(
-        f"driver:loc:{driver_id}", 30,
-        json.dumps({"lat": lat, "lng": lng, "heading": data.get("heading"), "speed": data.get("speed")}),
-    )
+    from app.services.driver_location import record_location
     async with pool.acquire() as conn:
-        await conn.execute(
-            """UPDATE drivers SET current_location=ST_MakePoint($2,$1)::geography,
-               last_location_update=NOW() WHERE id=$3""",
-            lat, lng, driver_id,
-        )
-        row = await conn.fetchrow(
-            """SELECT id, passenger_id FROM orders
-               WHERE driver_id=$1 AND status IN ('accepted','driver_arrived','in_progress')
-               LIMIT 1""",
-            driver_id,
-        )
-        if row:
-            await sio.emit(
-                "driver_location",
-                {"order_id": row["id"], "lat": lat, "lng": lng, "heading": data.get("heading")},
-                room=f"passenger:{row['passenger_id']}",
-            )
-            await conn.execute(
-                """INSERT INTO driver_location_history(driver_id,order_id,location)
-                   VALUES($1,$2,ST_MakePoint($4,$3)::geography)""",
-                driver_id, row["id"], lat, lng,
-            )
-    await sio.emit("driver_location_update", {"driver_id": driver_id, "lat": lat, "lng": lng}, room="admin")
+        await record_location(conn, driver_id, [point])
 
 
 @sio.on("driver:accept_order")
@@ -157,14 +154,9 @@ async def driver_reject_order(sid, data):
     if not driver_id or not order_id:
         return
     from app.database import pool
+    from app.services.order_service import reject_offer
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT passenger_id FROM orders WHERE id=$1", order_id)
-    if row:
-        await sio.emit(
-            "order_rejected",
-            {"order_id": order_id, "reason": "Haydovchi rad etdi"},
-            room=f"passenger:{row['passenger_id']}",
-        )
+        await reject_offer(conn, order_id, driver_id)
 
 
 @sio.on("driver:arrived")
@@ -238,6 +230,9 @@ async def passenger_cancel_order(sid, data):
                RETURNING driver_id""",
             order_id, user_id, reason,
         )
+        if row:
+            from app.services.order_service import close_offers
+            await close_offers(conn, order_id)
         if row and row["driver_id"]:
             await conn.execute("UPDATE drivers SET is_on_ride=false WHERE id=$1", row["driver_id"])
             await sio.emit("order_cancelled", {"order_id": order_id, "reason": reason, "cancelled_by": "passenger"},
@@ -248,6 +243,11 @@ async def passenger_cancel_order(sid, data):
 
 @sio.on("admin:join")
 async def admin_join(sid, data):
+    # Faqat admin tokeni bilan ulangan sessiya (aks holda istalgan foydalanuvchi haydovchilar joylashuvini ko'rardi)
+    session = await sio.get_session(sid)
+    from app.config import settings
+    if session.get("role") != "admin" or session.get("telegram_id") not in settings.admin_ids:
+        return
     await sio.enter_room(sid, "admin")
     from app.database import pool
     async with pool.acquire() as conn:

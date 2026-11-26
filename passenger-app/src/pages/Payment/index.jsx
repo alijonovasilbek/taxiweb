@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 export default function Payment() {
   const { orderId } = useParams();
@@ -43,16 +44,16 @@ export default function Payment() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {[
-          { id: 'cash', label: 'Naqd pul', icon: '💵', sub: 'Haydovchiga to\'g\'ridan-to\'g\'ri' },
-          { id: 'payme', label: 'Payme', icon: '💳', sub: 'Online to\'lov' },
-          { id: 'click', label: 'Click', icon: '💳', sub: 'Online to\'lov' },
+          { id: 'cash', label: 'Naqd pul', icon: 'cash', sub: 'Haydovchiga to\'g\'ridan-to\'g\'ri' },
+          { id: 'payme', label: 'Payme', icon: 'card', sub: 'Online to\'lov' },
+          { id: 'click', label: 'Click', icon: 'card', sub: 'Online to\'lov' },
         ].map((m) => (
           <button key={m.id} onClick={() => handlePay(m.id)} disabled={loading}
             style={{
               display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-              background: '#fff', border: '1.5px solid #ddd', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
+              background: 'var(--sheet)', border: '1.5px solid #ddd', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
             }}>
-            <span style={{ fontSize: 28 }}>{m.icon}</span>
+            <span className="icon-box"><I n={m.icon} size={22} /></span>
             <div>
               <div style={{ fontWeight: 600, fontSize: 16 }}>{m.label}</div>
               <div style={{ fontSize: 12, color: '#888' }}>{m.sub}</div>

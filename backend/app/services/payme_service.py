@@ -1,3 +1,4 @@
+import hmac
 import base64
 import asyncpg
 from app.config import settings
@@ -9,7 +10,7 @@ def _verify_auth(auth_header: str | None) -> bool:
     decoded = base64.b64decode(auth_header[6:]).decode()
     _, password = decoded.split(":", 1) if ":" in decoded else ("", "")
     secret = settings.payme_test_secret_key if settings.payme_is_test else settings.payme_secret_key
-    return password == secret
+    return bool(secret) and hmac.compare_digest(password.encode(), secret.encode())
 
 
 async def handle_webhook(method: str, params: dict, auth_header: str | None, conn: asyncpg.Connection) -> dict:

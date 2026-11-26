@@ -1,3 +1,4 @@
+import hmac
 import hashlib
 import asyncpg
 from app.config import settings
@@ -7,7 +8,7 @@ def _verify_sign(data: dict) -> bool:
     raw = (f"{data.get('click_trans_id')}{settings.click_service_id}"
            f"{settings.click_secret_key}{data.get('merchant_trans_id')}"
            f"{data.get('amount')}{data.get('action')}{data.get('sign_time')}")
-    return hashlib.md5(raw.encode()).hexdigest() == data.get("sign_string")
+    return hmac.compare_digest(hashlib.md5(raw.encode()).hexdigest(), str(data.get("sign_string") or ""))
 
 
 async def handle_prepare(data: dict, conn: asyncpg.Connection) -> dict:

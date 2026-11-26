@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
-import { Tabs, Empty, Spinner, StatusBadge, Route, Rating, Chips, NavBar } from '../../components/ui';
+import { Tabs, Empty, Spinner, StatusBadge, Route, Rating, Chips, NavBar, ModeSwitch } from '../../components/ui';
 import { useAppStore } from '../../store/appStore';
 import { useUserStore } from '../../store/userStore';
 import { formatDateTime, formatPrice, formatDistance, timeAgo } from '../../utils/formatters';
 import { RequestCard } from '../Orders';
 import { TripCard } from '../Carpool';
+import { I, ServiceGlyph, ServiceIcon } from '../../components/icons';
 
 function FeedTab() {
   const navigate = useNavigate();
@@ -23,30 +24,30 @@ function FeedTab() {
 
   if (!data) return <Spinner />;
   if (!data.vehicles.length) {
-    return <Empty icon="🚚" title="Tasdiqlangan transport yo'q" text={data.hint || 'Transport qo\'shing va admin tasdiqlashini kuting'}
+    return <Empty icon="truck" title="Tasdiqlangan transport yo'q" text={data.hint || 'Transport qo\'shing va admin tasdiqlashini kuting'}
       action={<button className="btn" onClick={() => navigate('/vehicles')}>Transportlarim</button>} />;
   }
   return (
     <>
-      <Chips value={service} onChange={setService} allLabel="Barchasi" items={[{ value: 'cargo', label: '🚚 Yuk' }, { value: 'equipment', label: '🚜 Texnika' }]} />
+      <Chips value={service} onChange={setService} allLabel="Barchasi" items={[{ value: 'cargo', label: <><ServiceGlyph code="cargo" /> Yuk</> }, { value: 'equipment', label: <><ServiceGlyph code="equipment" /> Texnika</> }]} />
       <div className="mt12" />
-      {data.requests.length === 0 && <Empty icon="🔕" title="Hozircha mos so'rov yo'q" text="Yangi so'rov tushishi bilan xabar olasiz" />}
+      {data.requests.length === 0 && <Empty icon="bell-off" title="Hozircha mos so'rov yo'q" text="Yangi so'rov tushishi bilan xabar olasiz" />}
       {data.requests.map((r) => (
         <div key={r.id} className="card clickable" onClick={() => navigate(`/requests/${r.id}`)}>
           <div className="between mb8">
-            <div className="bold ellipsis">{r.service_type === 'cargo' ? '🚚' : '🚜'} {r.title || category(r.vehicle_category)?.name || 'So\'rov'}</div>
+            <div className="row" style={{ gap: 10, minWidth: 0 }}><ServiceIcon code={r.service_type} size={30} /><div className="bold ellipsis">{r.title || category(r.vehicle_category)?.name || 'So\'rov'}</div></div>
             {r.my_offer_status ? <StatusBadge status={r.my_offer_status} /> : <span className="faint">{timeAgo(r.created_at)}</span>}
           </div>
           <Route from={r.from_address} to={r.to_address} />
           <div className="row mt12" style={{ flexWrap: 'wrap', gap: 6 }}>
             {r.vehicle_category && <span className="badge blue">{category(r.vehicle_category)?.name}</span>}
-            {r.distance_km !== null && <span className="badge gray">📍 {formatDistance(r.distance_km)}</span>}
+            {r.distance_km !== null && <span className="badge gray"><I n="pin" size={12} /> {formatDistance(r.distance_km)}</span>}
             {r.weight_kg && <span className="badge gray">{r.weight_kg} kg</span>}
             {r.duration_value && <span className="badge gray">{Number(r.duration_value)} {r.duration_unit === 'hour' ? 'soat' : r.duration_unit === 'shift' ? 'smena' : 'kun'}</span>}
-            {r.scheduled_at && <span className="badge yellow">🕒 {formatDateTime(r.scheduled_at)}</span>}
+            {r.scheduled_at && <span className="badge yellow"><I n="clock" size={12} /> {formatDateTime(r.scheduled_at)}</span>}
           </div>
           <div className="between mt12">
-            <span className="faint">👤 {r.client_name} · ⭐ {Number(r.client_rating || 5).toFixed(1)}</span>
+            <span className="faint">{r.client_name} · <I n="star" size={12} className="star-ico" /> {Number(r.client_rating || 5).toFixed(1)}</span>
             <span className="price">{r.budget ? formatPrice(r.budget) : r.estimated_price ? `~${formatPrice(r.estimated_price)}` : 'Kelishiladi'}</span>
           </div>
         </div>
@@ -75,7 +76,7 @@ function JobsTab() {
       ))}
       {done.length > 0 && <div className="section-title">Tarix</div>}
       {done.map((r) => <RequestCard key={r.id} r={r} onClick={() => navigate(`/requests/${r.id}`)} />)}
-      {!data.jobs.length && !data.pending_offers.length && <Empty icon="🧰" title="Hali ishlar yo'q" text="Mos so'rovlarga taklif bering" />}
+      {!data.jobs.length && !data.pending_offers.length && <Empty icon="provider" title="Hali ishlar yo'q" text="Mos so'rovlarga taklif bering" />}
     </>
   );
 }
@@ -86,10 +87,10 @@ function TripsTab() {
   useEffect(() => { api.get('/carpool/trips/my').then(({ data }) => setItems(data)).catch(() => setItems([])); }, []);
   return (
     <>
-      <button className="btn block accent mb12" onClick={() => navigate('/carpool/new')}>＋ Qatnov e'lon qilish</button>
-      {!items ? <Spinner /> : items.length === 0 ? <Empty icon="🛣️" title="Qatnovlar yo'q" /> : items.map((t) => (
+      <button className="btn block accent mb12" onClick={() => navigate('/carpool/new')}><I n="plus" size={19} /> Qatnov e'lon qilish</button>
+      {!items ? <Spinner /> : items.length === 0 ? <Empty icon="route" title="Qatnovlar yo'q" /> : items.map((t) => (
         <TripCard key={t.id} trip={t} onClick={() => navigate(`/carpool/trips/${t.id}`)}
-          extra={t.pending_bookings > 0 && <div className="mt8"><span className="badge orange">🙋 {t.pending_bookings} ta yangi bron</span></div>} />
+          extra={t.pending_bookings > 0 && <div className="mt8"><span className="badge orange"><I n="hand" size={12} /> {t.pending_bookings} ta yangi bron</span></div>} />
       ))}
     </>
   );
@@ -105,7 +106,7 @@ export default function Provider() {
 
   return (
     <div className="page">
-      <div className="page-header tall">
+      <div className="page-header">
         <div className="between">
           <div>
             <h1>Ijrochi paneli</h1>
@@ -115,15 +116,16 @@ export default function Provider() {
         </div>
       </div>
       <div className="content overlap">
+        <ModeSwitch />
         <div className="grid3 mb12">
           <div className="card clickable" style={{ marginBottom: 0, padding: 12, textAlign: 'center' }} onClick={() => navigate('/vehicles')}>
-            <div style={{ fontSize: 20 }}>🚚</div><div className="bold">{stats.approved_vehicles ?? 0}/{stats.vehicles ?? 0}</div><div className="faint">Transport</div>
+            <I n="truck" size={22} color="var(--primary)" /><div className="bold">{stats.approved_vehicles ?? 0}/{stats.vehicles ?? 0}</div><div className="faint">Transport</div>
           </div>
           <div className="card clickable" style={{ marginBottom: 0, padding: 12, textAlign: 'center' }} onClick={() => navigate('/schedule')}>
-            <div style={{ fontSize: 20 }}>📅</div><div className="bold">Jadval</div><div className="faint">Bo'sh vaqt</div>
+            <I n="calendar" size={22} color="var(--orange)" /><div className="bold">Jadval</div><div className="faint">Bo'sh vaqt</div>
           </div>
           <div className="card" style={{ marginBottom: 0, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 20 }}>✅</div><div className="bold">{stats.jobs_done ?? 0}</div><div className="faint">Bajarilgan</div>
+            <I n="done" size={22} color="var(--green)" /><div className="bold">{stats.jobs_done ?? 0}</div><div className="faint">Bajarilgan</div>
           </div>
         </div>
         <Tabs value={tab} onChange={(v) => setParams({ tab: v }, { replace: true })} items={[

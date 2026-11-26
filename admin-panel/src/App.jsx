@@ -12,55 +12,55 @@ import Vehicles from './pages/Vehicles';
 import Carpool from './pages/Carpool';
 import Requests from './pages/Requests';
 import Services from './pages/Services';
+import Places from './pages/Places';
+import Audit from './pages/Audit';
+import { I } from './components/icons';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: '📊' },
+  { path: '/', label: 'Dashboard', icon: 'dashboard' },
   { section: 'Platforma' },
-  { path: '/users', label: 'Foydalanuvchilar', icon: '👥' },
-  { path: '/vehicles', label: 'Transport / texnika', icon: '🚚' },
-  { path: '/services', label: 'Servislar va tariflar', icon: '🧩' },
+  { path: '/users', label: 'Foydalanuvchilar', icon: 'users' },
+  { path: '/vehicles', label: 'Transport / texnika', icon: 'truck' },
+  { path: '/services', label: 'Servislar va tariflar', icon: 'puzzle' },
+  { path: '/places', label: 'Mashhur joylar', icon: 'pin' },
+  { path: '/audit', label: 'Jurnal', icon: 'shield' },
   { section: 'Servislar' },
-  { path: '/carpool', label: "Po'puti", icon: '🚐' },
-  { path: '/requests', label: 'Yuk va texnika', icon: '🚜' },
+  { path: '/carpool', label: "Po'puti", icon: 'route' },
+  { path: '/requests', label: 'Yuk va texnika', icon: 'tractor' },
   { section: 'Taksi' },
-  { path: '/drivers', label: 'Haydovchilar', icon: '🚗' },
-  { path: '/orders', label: 'Buyurtmalar', icon: '📋' },
-  { path: '/payments', label: "To'lovlar", icon: '💳' },
-  { path: '/tariffs', label: 'Tarif', icon: '💰' },
-  { path: '/reports', label: 'Hisobotlar', icon: '📈' },
+  { path: '/drivers', label: 'Haydovchilar', icon: 'car' },
+  { path: '/orders', label: 'Buyurtmalar', icon: 'orders' },
+  { path: '/payments', label: "To'lovlar", icon: 'card' },
+  { path: '/tariffs', label: 'Tarif', icon: 'coins' },
+  { path: '/reports', label: 'Hisobotlar', icon: 'chart' },
 ];
 
 function Sidebar({ onLogout }) {
   const { pathname } = useLocation();
   return (
-    <div style={{ width: 220, background: '#1e293b', height: '100vh', position: 'fixed', left: 0, top: 0, padding: '20px 0', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #334155', marginBottom: 16 }}>
-        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>Chortoq <span style={{ color: '#FACC15' }}>Services</span></div>
-        <div style={{ color: '#94a3b8', fontSize: 12 }}>Admin Panel</div>
+    <aside className="sidebar">
+      <div className="brand">
+        <span className="brand-mark"><I n="taxi" size={19} /></span>
+        <div>
+          <div className="n">Chortoq Services</div>
+          <div className="s">Boshqaruv paneli</div>
+        </div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <nav className="side-scroll">
         {NAV_ITEMS.map((item) => item.section ? (
-          <div key={item.section} style={{ padding: '14px 20px 6px', color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.section}</div>
+          <div key={item.section} className="side-section">{item.section}</div>
         ) : (
-          <Link key={item.path} to={item.path} style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px',
-            color: pathname === item.path ? '#fff' : '#94a3b8',
-            background: pathname === item.path ? '#2563EB' : 'transparent',
-            textDecoration: 'none', fontSize: 14, fontWeight: pathname === item.path ? 600 : 400,
-            borderLeft: pathname === item.path ? '3px solid #60a5fa' : '3px solid transparent',
-          }}>
-            <span>{item.icon}</span> {item.label}
+          <Link key={item.path} to={item.path} className={`side-link${pathname === item.path ? ' active' : ''}`}>
+            <span className="si"><I n={item.icon} size={16} /></span>{item.label}
           </Link>
         ))}
+      </nav>
+      <div className="side-foot">
+        <button className="side-link" onClick={onLogout} style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}>
+          <span className="si"><I n="logout" size={16} /></span>Chiqish
+        </button>
       </div>
-      <button onClick={onLogout} style={{
-        margin: '0 16px 16px', padding: '10px', background: 'transparent',
-        border: '1px solid #334155', borderRadius: 8, color: '#94a3b8',
-        cursor: 'pointer', fontSize: 13,
-      }}>
-        Chiqish
-      </button>
-    </div>
+    </aside>
   );
 }
 
@@ -76,9 +76,9 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/admin">
-      <div style={{ display: 'flex' }}>
+      <div>
         <Sidebar onLogout={handleLogout} />
-        <div style={{ marginLeft: 220, flex: 1, minHeight: '100vh', padding: 24, background: '#f8fafc' }}>
+        <main className="main">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/drivers" element={<Drivers />} />
@@ -89,11 +89,13 @@ export default function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/services" element={<Services />} />
+            <Route path="/places" element={<Places />} />
+            <Route path="/audit" element={<Audit />} />
             <Route path="/carpool" element={<Carpool />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </div>
+        </main>
       </div>
     </BrowserRouter>
   );

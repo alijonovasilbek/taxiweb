@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
+import { Header, Card, Btn } from '../../components/ui';
+import { I } from '../../components/icons';
 
 export default function Tariffs() {
   const [tariffs, setTariffs] = useState([]);
@@ -30,13 +32,11 @@ export default function Tariffs() {
     setTimeout(() => setSaved(false), 3000);
   };
 
-  const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #ddd', fontSize: 14 };
-
   return (
     <div>
-      <h1 style={{ fontSize: 22, marginBottom: 20 }}>Tarif boshqaruvi</h1>
+      <Header title="Tarif boshqaruvi" sub="Taksi narxini hisoblash qoidalari" />
 
-      <div style={{ background: '#fff', borderRadius: 14, padding: 24, maxWidth: 500, boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+      <Card style={{ maxWidth: 520, padding: 24 }}>
         {[
           { key: 'baseFare', label: 'Boshlang\'ich narx (so\'m)' },
           { key: 'perKmPrice', label: 'Har km uchun (so\'m)' },
@@ -45,21 +45,21 @@ export default function Tariffs() {
           { key: 'nightMultiplier', label: 'Kechasi koeffitsient (masalan 1.5)' },
         ].map(({ key, label }) => (
           <div key={key} style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 13, color: '#555', marginBottom: 6 }}>{label}</label>
-            <input type="number" value={form[key]} onChange={(e) => set(key, e.target.value)} style={inputStyle} />
+            <label className="lbl">{label}</label>
+            <input type="number" className="field" value={form[key]} onChange={(e) => set(key, e.target.value)} style={{ width: '100%' }} />
           </div>
         ))}
 
-        <div style={{ background: '#f0f7ff', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: '#555' }}>
+        <div style={{ background: 'var(--primary-soft)', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
           <b>Misol:</b> 5 km, 10 min sayohat uchun:<br />
           {form.baseFare || 0} + {form.perKmPrice || 0}×5 + {form.perMinPrice || 0}×10 = {' '}
           <b>{Number(form.baseFare || 0) + Number(form.perKmPrice || 0) * 5 + Number(form.perMinPrice || 0) * 10} so'm</b>
         </div>
 
-        <button onClick={handleSave} style={{ width: '100%', padding: 13, fontSize: 16, fontWeight: 600, background: '#1976D2', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer' }}>
-          {saved ? '✅ Saqlandi!' : 'Saqlash'}
-        </button>
-      </div>
+        <Btn kind={saved ? 'green' : 'primary'} onClick={handleSave} style={{ width: '100%', padding: 11, fontSize: 15 }}>
+          {saved ? <><I n="check" size={16} stroke={2.6} /> Saqlandi</> : 'Saqlash'}
+        </Btn>
+      </Card>
     </div>
   );
 }

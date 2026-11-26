@@ -1,7 +1,11 @@
 """Admin: Chortoq Services boshqaruvi (foydalanuvchilar, transport, po'puti, so'rovlar, tariflar)."""
 import asyncpg
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.services.roles import sync_roles
+from app.services.documents import missing_docs
+from app.services.files import doc_out, docs_out
 from app.auth import get_admin_user
 from app.catalog import VEHICLE_CATEGORIES
 from app.database import get_db
@@ -89,7 +93,7 @@ async def get_user(user_id: int, admin=Depends(get_admin_user), conn: asyncpg.Co
     reviews = await conn.fetch(
         "SELECT * FROM reviews WHERE target_user_id=$1 ORDER BY created_at DESC LIMIT 20", user_id
     )
-    return {**row_to_dict(row), "vehicles": rows_to_list(vehicles), "documents": [dict(d) for d in docs],
+    return {**row_to_dict(row), "vehicles": rows_to_list(vehicles), "documents": [doc_out(d) for d in docs],
             "reviews": [dict(r) for r in reviews]}
 
 
@@ -97,6 +101,8 @@ async def get_user(user_id: int, admin=Depends(get_admin_user), conn: asyncpg.Co
 async def block_user(user_id: int, body: CancelIn | None = None, admin=Depends(get_admin_user),
                      conn: asyncpg.Connection = Depends(get_db)):
     await conn.execute("UPDATE users SET is_blocked=true, updated_at=NOW() WHERE id=$1", user_id)
+    from app.services.app_auth import revoke_user
+    await revoke_user(conn, user_id)  # Android ilovadagi sessiyalar darhol yopiladi
     await conn.execute("UPDATE vehicles SET is_available=false WHERE owner_id=$1", user_id)
     await conn.execute(
         "UPDATE carpool_trips SET status='cancelled' WHERE driver_id=$1 AND status IN ('active','full')", user_id
@@ -133,11 +139,19 @@ async def list_vehicles(status: str | None = None, category: str | None = None, 
         *args, lim, off,
     )
     total = await conn.fetchval(f"SELECT COUNT(*) FROM vehicles v {where}", *args)
+    rows = [{**row_to_dict(r), "documents": docs_out(r["documents"]), "missing_docs": await missing_docs(conn, dict(r))}
+            for r in rows]
     return {"vehicles": rows_to_list(rows), "total": total, "page": page}
 
 
 @router.put("/vehicles/{vehicle_id}/approve")
 async def approve_vehicle(vehicle_id: int, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    current = await conn.fetchrow("SELECT * FROM vehicles WHERE id=$1", vehicle_id)
+    if not current:
+        raise HTTPException(404, "Topilmadi")
+    missing = await missing_docs(conn, dict(current))
+    if missing:
+        raise HTTPException(400, "Hujjatlar yetishmaydi: " + ", ".join(m["name"] for m in missing))
     row = await conn.fetchrow(
         "UPDATE vehicles SET status='approved', reject_reason=NULL, updated_at=NOW() WHERE id=$1 RETURNING *",
         vehicle_id,
@@ -146,6 +160,7 @@ async def approve_vehicle(vehicle_id: int, admin=Depends(get_admin_user), conn: 
         raise HTTPException(404, "Topilmadi")
     await conn.execute("UPDATE user_documents SET status='approved' WHERE vehicle_id=$1 AND status='pending'",
                        vehicle_id)
+    await sync_roles(conn, row["owner_id"])
     name = VEHICLE_CATEGORIES.get(row["category"], {}).get("name", "")
     await notify(row["owner_id"], "vehicle_status", "✅ Transport tasdiqlandi",
                  f"{name} {row['model']} tasdiqlandi. Endi buyurtmalar va so'rovlarni qabul qila olasiz.",
@@ -163,6 +178,7 @@ async def reject_vehicle(vehicle_id: int, body: CancelIn | None = None, admin=De
     )
     if not row:
         raise HTTPException(404, "Topilmadi")
+    await sync_roles(conn, row["owner_id"])
     await notify(row["owner_id"], "vehicle_status", "❌ Transport rad etildi",
                  f"{row['model']}: {reason}", {"vehicle_id": vehicle_id, "status": "rejected"},
                  event="vehicle:status", link="/vehicles")
@@ -319,3 +335,41 @@ async def upsert_service_tariff(body: ServiceTariffIn, admin=Depends(get_admin_u
 async def delete_service_tariff(tariff_id: int, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
     await conn.execute("DELETE FROM service_tariffs WHERE id=$1", tariff_id)
     return {"success": True}
+
+
+# ── Mashhur joylar (qidiruvda Yandex'dan oldin chiqadi) ─────────────────────
+class PlaceIn(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    address: str | None = Field(None, max_length=300)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+
+
+@router.get("/places")
+async def list_places(admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    return rows_to_list(await conn.fetch("SELECT * FROM popular_places ORDER BY name"))
+
+
+@router.post("/places", status_code=201)
+async def create_place(body: PlaceIn, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    row = await conn.fetchrow(
+        "INSERT INTO popular_places(name, address, lat, lng) VALUES($1,$2,$3,$4) RETURNING *",
+        body.name.strip(), body.address, body.lat, body.lng,
+    )
+    return row_to_dict(row)
+
+
+@router.delete("/places/{place_id}")
+async def delete_place(place_id: int, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    await conn.execute("DELETE FROM popular_places WHERE id=$1", place_id)
+    return {"success": True}
+
+
+# ── Admin harakatlari jurnali ───────────────────────────────────────────────
+@router.get("/audit")
+async def audit_log(page: int = 1, limit: int = Query(50, le=200), admin=Depends(get_admin_user),
+                    conn: asyncpg.Connection = Depends(get_db)):
+    lim, off = _page(page, limit)
+    rows = await conn.fetch("SELECT * FROM admin_audit ORDER BY created_at DESC LIMIT $1 OFFSET $2", lim, off)
+    total = await conn.fetchval("SELECT COUNT(*) FROM admin_audit")
+    return {"items": rows_to_list(rows), "total": total, "page": page}

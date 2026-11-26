@@ -54,3 +54,18 @@ def categories_for_service(service: str) -> list[str]:
 
 def services_for_category(category: str) -> list[str]:
     return VEHICLE_CATEGORIES.get(category, {}).get("services", [])
+
+
+# ── Ijrochi hujjatlari: admin tasdiqlashidan oldin majburiy ─────────────────
+# Shaxsiy hujjatlar (pasport, guvohnoma) bir marta yuklanadi — barcha transportlarga amal qiladi
+PERSONAL_DOCS = {"passport", "license"}
+REQUIRED_DOCS_BY_ROLE = {
+    "driver": ["passport", "license", "tech_passport"],
+    "cargo": ["passport", "license", "tech_passport"],
+    "equipment_owner": ["passport", "tech_passport"],
+}
+
+
+def required_docs(category: str) -> list[str]:
+    role = VEHICLE_CATEGORIES.get(category, {}).get("role")
+    return REQUIRED_DOCS_BY_ROLE.get(role, ["passport"])

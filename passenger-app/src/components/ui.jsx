@@ -1,20 +1,27 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
+import { useUserStore } from '../store/userStore';
 import { STATUS } from '../utils/constants';
+import { I } from './icons';
 
 export function PageHeader({ title, sub, back = true, right, tall, children }) {
   const navigate = useNavigate();
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/'));
   return (
     <div className={`page-header${tall ? ' tall' : ''}`}>
+      {back && (
+        <div className="between" style={{ minHeight: 36, marginBottom: 2 }}>
+          <button className="back-btn" onClick={goBack} aria-label="Orqaga"><I n="back" size={28} stroke={2.2} />Orqaga</button>
+          {right}
+        </div>
+      )}
       <div className="row">
-        {back && <button className="back-btn" onClick={goBack} aria-label="Orqaga">←</button>}
         <div className="grow">
           <h1>{title}</h1>
           {sub && <div className="sub">{sub}</div>}
         </div>
-        {right}
+        {!back && right}
       </div>
       {children}
     </div>
@@ -22,6 +29,11 @@ export function PageHeader({ title, sub, back = true, right, tall, children }) {
 }
 
 export function Page({ title, sub, back, right, tall, header, children, nav = false }) {
+  // Ijrochi rejimida Transport va Jadval — pastki menyu bo'limlari (orqaga tugmasi o'rniga menyu)
+  const { mode } = useMode();
+  const { pathname } = useLocation();
+  const isTab = mode === 'provider' && ['/vehicles', '/schedule', '/taxi-driver'].includes(pathname);
+  if (isTab) { nav = true; back = false; }
   return (
     <div className="page">
       {header || <PageHeader title={title} sub={sub} back={back} right={right} tall={tall} />}
@@ -36,11 +48,11 @@ export function StatusBadge({ status }) {
   return <span className={`badge ${s.color}`}>{s.label}</span>;
 }
 
-export function Empty({ icon = '📭', title, text, action }) {
+export function Empty({ icon = 'inbox', title, text, action }) {
   return (
     <div className="empty">
-      <div className="big">{icon}</div>
-      <div className="bold" style={{ color: 'var(--muted)' }}>{title}</div>
+      <div className="big"><I n={icon} size={30} stroke={1.8} /></div>
+      <div className="bold" style={{ color: 'var(--text)', fontSize: 17 }}>{title}</div>
       {text && <div className="faint mt8">{text}</div>}
       {action && <div className="mt16">{action}</div>}
     </div>
@@ -103,7 +115,7 @@ export function Modal({ title, onClose, children }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="between mb12">
           <div className="modal-title" style={{ margin: 0 }}>{title}</div>
-          <button className="btn ghost sm" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose} aria-label="Yopish"><I n="close" size={16} stroke={2.6} /></button>
         </div>
         {children}
       </div>
@@ -115,7 +127,7 @@ export function Stars({ value, onChange }) {
   return (
     <div className="stars">
       {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} type="button" className={`star${n <= value ? ' on' : ''}`} onClick={() => onChange(n)}>⭐</button>
+        <button key={n} type="button" className={`star${n <= value ? ' on' : ''}`} onClick={() => onChange(n)}><I n="star" size={36} stroke={1.6} /></button>
       ))}
     </div>
   );
@@ -123,7 +135,7 @@ export function Stars({ value, onChange }) {
 
 export function Rating({ value, count }) {
   return (
-    <span className="faint">⭐ {Number(value || 5).toFixed(1)}{count !== undefined ? ` (${count})` : ''}</span>
+    <span className="faint" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><I n="star" size={13} className="star-ico" /> {Number(value || 5).toFixed(1)}{count !== undefined ? ` (${count})` : ''}</span>
   );
 }
 
@@ -142,25 +154,57 @@ export function Toasts() {
   );
 }
 
-const NAV = [
-  { path: '/', icon: '🏠', label: 'Asosiy' },
-  { path: '/search', icon: '🔎', label: 'Qidiruv' },
-  { path: '/orders', icon: '📋', label: 'Buyurtmalar' },
-  { path: '/provider', icon: '🧰', label: 'Ijrochi' },
-  { path: '/profile', icon: '👤', label: 'Profil' },
+const NAV_CLIENT = [
+  { path: '/', icon: 'home', label: 'Asosiy' },
+  { path: '/search', icon: 'search', label: 'Qidiruv' },
+  { path: '/orders', icon: 'orders', label: 'Buyurtmalar' },
+  { path: '/provider', icon: 'provider', label: 'Ijrochi' },
+  { path: '/profile', icon: 'profile', label: 'Profil' },
 ];
+const NAV_PROVIDER = [
+  { path: '/provider', icon: 'provider', label: 'Ishlar' },
+  { path: '/vehicles', icon: 'truck', label: 'Transport' },
+  { path: '/schedule', icon: 'calendar', label: 'Jadval' },
+  { path: '/profile', icon: 'profile', label: 'Profil' },
+];
+
+/** Ijrochi rejimi faqat tasdiqlangan ijrochi roli bo'lsa */
+export function useMode() {
+  const user = useUserStore((s) => s.user);
+  const { mode, setMode } = useAppStore();
+  const isProvider = Boolean(user?.roles?.some((r) => r !== 'client'));
+  return { mode: isProvider ? mode : 'client', setMode, isProvider };
+}
+
+export function ModeSwitch() {
+  const { mode, setMode, isProvider } = useMode();
+  const navigate = useNavigate();
+  if (!isProvider) return null;
+  const go = (m) => { setMode(m); navigate(m === 'provider' ? '/provider' : '/'); };
+  return (
+    <div className="tabs" style={{ marginBottom: 12 }}>
+      <button className={`tab${mode === 'client' ? ' active' : ''}`} onClick={() => go('client')}>Mijoz</button>
+      <button className={`tab${mode === 'provider' ? ' active' : ''}`} onClick={() => go('provider')}>Ijrochi</button>
+    </div>
+  );
+}
 
 export function NavBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const unread = useAppStore((s) => s.unread);
+  const { mode } = useMode();
+  const isDriver = useUserStore((s) => s.user?.roles?.includes('driver'));
+  const NAV = mode === 'provider'
+    ? (isDriver ? [NAV_PROVIDER[0], { path: '/taxi-driver', icon: 'taxi', label: 'Taksi' }, ...NAV_PROVIDER.slice(1)] : NAV_PROVIDER)
+    : NAV_CLIENT;
   return (
-    <div className="nav-bar">
+    <div className={`nav-bar${mode === 'provider' ? ' provider' : ''}`}>
       {NAV.map((n) => {
         const active = n.path === '/' ? pathname === '/' : pathname.startsWith(n.path);
         return (
           <button key={n.path} className={`nav-item${active ? ' active' : ''}`} onClick={() => navigate(n.path)}>
-            <span className="ic">{n.icon}</span>
+            <span className="ic"><I n={n.icon} size={21} stroke={active ? 2.2 : 1.8} /></span>
             {n.label}
             {n.path === '/profile' && unread > 0 && <span className="dot" style={{ top: -2, right: '22%' }}>{unread}</span>}
           </button>

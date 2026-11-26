@@ -1,11 +1,9 @@
 import asyncio
 import asyncpg
+from app.log import log
 from app.services.matching_service import find_nearest_drivers
 from app.services.bot_retry import with_retry
 from app.services.notification_service import send_to_passenger
-
-ORDER_TIMEOUT_SEC = 30
-
 
 async def create_order(conn: asyncpg.Connection, passenger_id: int, pickup: dict, dropoff: dict,
                        distance_km: float, duration_min: int, price: float, payment_method: str) -> dict:
@@ -31,40 +29,109 @@ async def create_order(conn: asyncpg.Connection, passenger_id: int, pickup: dict
     return order
 
 
-async def _dispatch(conn: asyncpg.Connection, order: dict):
-    from app.socket_manager import sio
-    from app.database import pool
+# Har bir buyurtma uchun "joriy haydovchi javob berdi / buyurtma o'zgardi" signali (bitta jarayon ichida)
+_offer_events: dict[int, asyncio.Event] = {}
 
-    await asyncio.sleep(0)  # yield to event loop
 
-    async with pool.acquire() as c:
-        drivers = await find_nearest_drivers(c, order["pickup_lat"], order["pickup_lng"])
-        passenger = await c.fetchrow("SELECT * FROM users WHERE id=$1", order["passenger_id"])
+def _wake(order_id: int) -> None:
+    ev = _offer_events.get(order_id)
+    if ev:
+        ev.set()
 
-    if not drivers:
-        from app.database import pool
-        async with pool.acquire() as c:
-            await c.execute("UPDATE orders SET status='no_drivers' WHERE id=$1", order["id"])
-        await sio.emit("no_drivers_found", {"order_id": order["id"]}, room=f"passenger:{order['passenger_id']}")
-        return
 
-    order_data = {
+def _order_payload(order: dict, passenger) -> dict:
+    from app.config import settings
+    return {
         "order_id": order["id"],
         "pickup": {"address": order["pickup_address"], "lat": float(order["pickup_lat"]), "lng": float(order["pickup_lng"])},
         "dropoff": {"address": order["dropoff_address"], "lat": float(order["dropoff_lat"]), "lng": float(order["dropoff_lng"])},
         "distance_km": float(order["distance_km"] or 0),
         "duration_min": order["duration_min"] or 0,
         "price": float(order["estimated_price"]),
+        "payment_method": order.get("payment_method") or "cash",
         "passenger_rating": float(passenger["rating"]) if passenger else 5.0,
-        "timeout": ORDER_TIMEOUT_SEC,
+        "timeout": settings.offer_timeout_sec,
     }
 
-    for driver in drivers:
-        await sio.emit("new_order", order_data, room=f"driver:{driver['id']}")
-        asyncio.create_task(_driver_timeout(driver["id"], order["id"]))
-        asyncio.create_task(_notify_driver_bot(driver, order_data))
 
-    asyncio.create_task(_order_timeout(order["id"], order["passenger_id"]))
+async def _dispatch(conn: asyncpg.Connection, order: dict):
+    """Buyurtmani yaqin haydovchilarga KETMA-KET taklif qiladi (PLAN-ANDROID B7).
+
+    Eng yaqiniga `offer_timeout_sec` soniya; rad etsa yoki javob bermasa — keyingisiga. Shunda ilovadagi
+    to'liq ekranli "qo'ng'iroq" hammani birdan bezovta qilmaydi va qabul qilish poygasi bo'lmaydi.
+    """
+    from app.config import settings
+    from app.database import pool
+    from app.services import push
+    from app.socket_manager import sio
+
+    await asyncio.sleep(0)
+    order_id = order["id"]
+    async with pool.acquire() as c:
+        drivers = await find_nearest_drivers(c, order["pickup_lat"], order["pickup_lng"])
+        passenger = await c.fetchrow("SELECT * FROM users WHERE id=$1", order["passenger_id"])
+    order_data = _order_payload(order, passenger)
+    ev = _offer_events.setdefault(order_id, asyncio.Event())
+    try:
+        for driver in drivers[: settings.max_offer_drivers]:
+            async with pool.acquire() as c:
+                if await c.fetchval("SELECT status FROM orders WHERE id=$1", order_id) != "searching":
+                    return
+                offered = await c.fetchval(
+                    """INSERT INTO order_offers(order_id, driver_id, distance_km)
+                       SELECT $1, d.id, $3 FROM drivers d
+                       WHERE d.id=$2 AND d.is_online AND NOT d.is_on_ride AND d.status='approved'
+                       ON CONFLICT (order_id, driver_id) DO NOTHING RETURNING id""",
+                    order_id, driver["id"], round(float(driver["distance_km"] or 0), 2),
+                )
+                user_id = await c.fetchval("SELECT user_id FROM drivers WHERE id=$1", driver["id"])
+            if not offered:
+                continue  # shu orada band bo'ldi yoki oflayn
+            ev.clear()
+            payload = {**order_data, "distance_to_pickup_km": round(float(driver["distance_km"] or 0), 2)}
+            await sio.emit("new_order", payload, room=f"driver:{driver['id']}")
+            if user_id:
+                push.fire(user_id, {"type": "new_order", **payload}, urgent=True, ttl=settings.offer_timeout_sec)
+            asyncio.create_task(_notify_driver_bot(driver, order_data))
+            try:
+                await asyncio.wait_for(ev.wait(), settings.offer_timeout_sec)
+            except asyncio.TimeoutError:
+                pass
+            async with pool.acquire() as c:
+                expired = await c.fetchval(
+                    """UPDATE order_offers SET status='expired', answered_at=NOW()
+                       WHERE order_id=$1 AND driver_id=$2 AND status='offered' RETURNING id""",
+                    order_id, driver["id"])
+            if expired:
+                await sio.emit("new_order_timeout", {"order_id": order_id}, room=f"driver:{driver['id']}")
+        async with pool.acquire() as c:
+            changed = await c.fetchval(
+                "UPDATE orders SET status='no_drivers' WHERE id=$1 AND status='searching' RETURNING id", order_id)
+        if changed:
+            await sio.emit("no_drivers_found", {"order_id": order_id}, room=f"passenger:{order['passenger_id']}")
+    finally:
+        _offer_events.pop(order_id, None)
+
+
+async def reject_offer(conn: asyncpg.Connection, order_id: int, driver_id: int) -> bool:
+    """Haydovchi rad etdi — darhol keyingi haydovchiga o'tiladi."""
+    done = await conn.fetchval(
+        """UPDATE order_offers SET status='rejected', answered_at=NOW()
+           WHERE order_id=$1 AND driver_id=$2 AND status='offered' RETURNING id""", order_id, driver_id)
+    if done:
+        _wake(order_id)
+    return bool(done)
+
+
+async def close_offers(conn: asyncpg.Connection, order_id: int) -> None:
+    """Buyurtma bekor qilindi — ochiq taklif ekrani haydovchida yopilsin."""
+    from app.socket_manager import sio
+    rows = await conn.fetch(
+        """UPDATE order_offers SET status='cancelled', answered_at=NOW()
+           WHERE order_id=$1 AND status='offered' RETURNING driver_id""", order_id)
+    for r in rows:
+        await sio.emit("new_order_timeout", {"order_id": order_id}, room=f"driver:{r['driver_id']}")
+    _wake(order_id)
 
 
 async def _notify_driver_bot(driver: dict, order_data: dict):
@@ -93,41 +160,33 @@ async def _notify_driver_bot(driver: dict, order_data: dict):
             label="notify_driver_bot",
         )
     except Exception as e:
-        print(f"[bot] driver notify error: {e}")
-
-
-async def _driver_timeout(driver_id: int, order_id: int):
-    from app.socket_manager import sio
-    await asyncio.sleep(ORDER_TIMEOUT_SEC)
-    from app.database import pool
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT status FROM orders WHERE id=$1", order_id)
-    if row and row["status"] == "searching":
-        await sio.emit("new_order_timeout", {"order_id": order_id}, room=f"driver:{driver_id}")
-
-
-async def _order_timeout(order_id: int, passenger_id: int):
-    from app.socket_manager import sio
-    await asyncio.sleep(ORDER_TIMEOUT_SEC + 5)
-    from app.database import pool
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT status FROM orders WHERE id=$1", order_id)
-        if row and row["status"] == "searching":
-            await conn.execute("UPDATE orders SET status='no_drivers' WHERE id=$1", order_id)
-    await sio.emit("no_drivers_found", {"order_id": order_id}, room=f"passenger:{passenger_id}")
+        log.warning(f"[bot] driver notify error: {e}")
 
 
 async def accept_order(conn: asyncpg.Connection, order_id: int, driver_id: int):
     from app.socket_manager import sio
-    row = await conn.fetchrow("SELECT * FROM orders WHERE id=$1 AND status='searching'", order_id)
-    if not row:
-        raise ValueError("Order not available")
-
-    await conn.execute(
-        "UPDATE orders SET driver_id=$1, status='accepted', accepted_at=NOW() WHERE id=$2",
-        driver_id, order_id,
-    )
-    await conn.execute("UPDATE drivers SET is_on_ride=true WHERE id=$1", driver_id)
+    async with conn.transaction():
+        # Haydovchi tasdiqlangan, onlayn va bo'sh bo'lishi shart; band qilish ham shu yerda (qulf bilan)
+        drv = await conn.fetchrow(
+            """UPDATE drivers SET is_on_ride=true
+               WHERE id=$1 AND status='approved' AND is_online AND NOT is_on_ride RETURNING id""", driver_id)
+        if not drv:
+            raise ValueError("Driver not available")
+        # Faqat shu haydovchiga taklif qilingan va muddati o'tmagan buyurtmani qabul qilish mumkin
+        offer = await conn.fetchval(
+            """UPDATE order_offers SET status='accepted', answered_at=NOW()
+               WHERE order_id=$1 AND driver_id=$2 AND status='offered' RETURNING id""", order_id, driver_id)
+        if not offer:
+            raise ValueError("Bu buyurtma sizga taklif qilinmagan yoki muddati o'tgan")
+        # Atomar: faqat birinchi qabul qilgan haydovchi oladi
+        row = await conn.fetchrow(
+            """UPDATE orders SET driver_id=$1, status='accepted', accepted_at=NOW()
+               WHERE id=$2 AND status='searching' AND passenger_id <> COALESCE(
+                   (SELECT user_id FROM drivers WHERE id=$1), -1)
+               RETURNING *""", driver_id, order_id)
+        if not row:
+            raise ValueError("Order not available")  # tranzaksiya bekor → haydovchi band qilinmaydi
+    _wake(order_id)
 
     driver = await conn.fetchrow("SELECT * FROM drivers WHERE id=$1", driver_id)
     await sio.emit(

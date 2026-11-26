@@ -3,6 +3,7 @@ import api from '../../services/api';
 import { Page, Spinner } from '../../components/ui';
 import { useAppStore } from '../../store/appStore';
 import { WEEKDAYS, apiError } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 export default function Schedule() {
   const { toast } = useAppStore();
@@ -23,7 +24,7 @@ export default function Schedule() {
     setSaving(true);
     try {
       await api.put('/schedules/me', { slots });
-      toast('✅ Jadval saqlandi', 'Smart matching shu vaqtlarda sizni birinchi taklif qiladi');
+      toast('Jadval saqlandi', 'Smart matching shu vaqtlarda sizni birinchi taklif qiladi');
     } catch (e) {
       toast('Xatolik', apiError(e), 'error');
     } finally {
@@ -45,7 +46,7 @@ export default function Schedule() {
           <div key={d} className="card">
             <div className="between">
               <div className="bold">{name}</div>
-              <button className="btn ghost sm" onClick={() => add(d)}>＋ Vaqt</button>
+              <button className="btn ghost sm" onClick={() => add(d)}><I n="plus" size={15} /> Vaqt</button>
             </div>
             {daySlots.length === 0 && <div className="faint mt8">Dam olish</div>}
             {daySlots.map((s) => (
@@ -53,7 +54,7 @@ export default function Schedule() {
                 <input type="time" className="input" value={s.start_time} onChange={(e) => update(s.i, 'start_time', e.target.value)} />
                 <span>—</span>
                 <input type="time" className="input" value={s.end_time} onChange={(e) => update(s.i, 'end_time', e.target.value)} />
-                <button className="btn red-soft sm" onClick={() => remove(s.i)}>✕</button>
+                <button className="btn red-soft sm" onClick={() => remove(s.i)} aria-label="O'chirish"><I n="close" size={15} /></button>
               </div>
             ))}
           </div>

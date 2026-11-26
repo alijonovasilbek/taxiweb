@@ -5,6 +5,7 @@ import LocationPicker from '../../components/LocationPicker';
 import { Page, Field } from '../../components/ui';
 import { useAppStore } from '../../store/appStore';
 import { toInputDateTime, apiError, WEEKDAYS_SHORT, formatPrice } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 export default function CarpoolNew() {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ export default function CarpoolNew() {
         allow_parcels: form.allow_parcels,
         note: form.note || null,
       });
-      toast('✅ Qatnov e\'lon qilindi', 'Yo\'lovchilar bron qilganda xabar olasiz');
+      toast('Qatnov e\'lon qilindi', 'Yo\'lovchilar bron qilganda xabar olasiz');
       navigate(`/carpool/trips/${data.id}`, { replace: true });
     } catch (e) {
       toast('Xatolik', apiError(e), 'error');
@@ -75,7 +76,7 @@ export default function CarpoolNew() {
       <div className="card">
         <LocationPicker label="Qayerdan" value={from} onChange={setFrom} />
         <LocationPicker label="Qayerga" value={to} onChange={setTo} dot="red" />
-        {suggested && <div className="hint mb12">📏 {suggested.distance_km} km · ~{suggested.duration_min} daqiqa · tavsiya: {formatPrice(suggested.suggested_price_per_seat)} / o'rin</div>}
+        {suggested && <div className="hint mb12"><I n="ruler" size={13} /> {suggested.distance_km} km · ~{suggested.duration_min} daqiqa · tavsiya: {formatPrice(suggested.suggested_price_per_seat)} / o'rin</div>}
       </div>
 
       <div className="card">
@@ -85,7 +86,7 @@ export default function CarpoolNew() {
             {vehicles.map((v) => <option key={v.id} value={v.id}>{v.model} {v.plate_number || ''} ({v.seats || '?'} o'rin)</option>)}
           </select>
         </Field>
-        {vehicles.length === 0 && <button className="btn secondary sm mb12" onClick={() => navigate('/vehicles/new')}>＋ Transport qo'shish</button>}
+        {vehicles.length === 0 && <button className="btn secondary sm mb12" onClick={() => navigate('/vehicles/new')}><I n="plus" size={17} /> Transport qo'shish</button>}
         <Field label="Jo'nash vaqti">
           <input type="datetime-local" className="input" value={form.departure_at} onChange={(e) => set('departure_at', e.target.value)} />
         </Field>
@@ -105,7 +106,7 @@ export default function CarpoolNew() {
           </Field>
         </div>
         <div className="between mb12">
-          <span className="muted">📦 Pochta / kichik yuk olaman</span>
+          <span className="muted"><I n="parcel" size={15} /> Pochta / kichik yuk olaman</span>
           <button type="button" className={`switch${form.allow_parcels ? ' on' : ''}`} onClick={() => set('allow_parcels', !form.allow_parcels)} />
         </div>
         <Field label="Izoh">

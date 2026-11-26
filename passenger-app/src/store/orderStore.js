@@ -6,8 +6,11 @@ export const useOrderStore = create((set, get) => ({
   driver: null,
   driverLocation: null,
 
-  createOrder: async ({ pickup, dropoff, paymentMethod }) => {
-    const { data } = await api.post('/orders', { pickup, dropoff, paymentMethod });
+  createOrder: async ({ pickup, dropoff, paymentMethod, roadDistanceKm, roadDurationMin }) => {
+    const { data } = await api.post('/orders', {
+      pickup, dropoff, payment_method: paymentMethod,
+      road_distance_km: roadDistanceKm ?? null, road_duration_min: roadDurationMin ?? null,
+    });
     set({ activeOrder: data });
     return data;
   },

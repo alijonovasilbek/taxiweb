@@ -4,6 +4,7 @@ import api from '../../services/api';
 import { Page, Spinner, Empty } from '../../components/ui';
 import { useAppStore } from '../../store/appStore';
 import { formatDate, formatPrice, WEEKDAYS_SHORT } from '../../utils/formatters';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 const SERVICE = { carpool: 'Po\'puti', cargo: 'Yuk tashish', equipment: 'Spets texnika' };
 
@@ -20,7 +21,7 @@ export default function PublicProfile() {
   }, [userId]);
 
   if (p === null) return <Page title="Profil"><Spinner /></Page>;
-  if (p === false) return <Page title="Profil"><Empty icon="🤷" title="Foydalanuvchi topilmadi" /></Page>;
+  if (p === false) return <Page title="Profil"><Empty icon="user-x" title="Foydalanuvchi topilmadi" /></Page>;
 
   const roleNames = (p.roles || []).map((r) => catalog?.roles?.find((x) => x.code === r)).filter(Boolean);
 
@@ -28,18 +29,18 @@ export default function PublicProfile() {
     <Page title={`${p.first_name} ${p.last_name || ''}`} sub={p.company_name || `A'zo: ${formatDate(p.created_at)}`}>
       <div className="grid2 mb12">
         <div className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-          <div className="bold" style={{ fontSize: 22, color: 'var(--green)' }}>⭐ {Number(p.provider_rating || 5).toFixed(1)}</div>
+          <div className="bold row" style={{ fontSize: 22, justifyContent: 'center', gap: 4 }}><I n="star" size={20} className="star-ico" />{Number(p.provider_rating || 5).toFixed(1)}</div>
           <div className="faint">Ijrochi · {p.provider_reviews || 0} sharh</div>
         </div>
         <div className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-          <div className="bold" style={{ fontSize: 22, color: '#d97706' }}>⭐ {Number(p.rating || 5).toFixed(1)}</div>
+          <div className="bold row" style={{ fontSize: 22, justifyContent: 'center', gap: 4 }}><I n="star" size={20} className="star-ico" />{Number(p.rating || 5).toFixed(1)}</div>
           <div className="faint">Mijoz sifatida</div>
         </div>
       </div>
 
       <div className="card">
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-          {roleNames.map((r) => <span key={r.code} className="badge blue">{r.icon} {r.name}</span>)}
+          {roleNames.map((r) => <span key={r.code} className="badge blue">{r.name}</span>)}
         </div>
         {p.bio && <div className="muted mt12">{p.bio}</div>}
       </div>
@@ -49,7 +50,7 @@ export default function PublicProfile() {
         const c = category(v.category);
         return (
           <div key={v.id} className="card row">
-            {v.photo_url ? <img className="photo" src={v.photo_url} alt="" /> : <div className="icon-box" style={{ background: 'var(--primary-soft)' }}>{c?.icon}</div>}
+            {v.photo_url ? <img className="photo" src={v.photo_url} alt="" /> : <CategoryIcon code={v.category} size={48} />}
             <div className="grow">
               <div className="bold">{c?.name} · {v.model}</div>
               <div className="faint">{[v.year, v.color, v.seats && `${v.seats} o'rin`, v.capacity_kg && `${v.capacity_kg} kg`].filter(Boolean).join(' · ')}</div>
@@ -76,7 +77,7 @@ export default function PublicProfile() {
       {p.reviews?.length === 0 && <div className="card faint">Hali sharhlar yo'q</div>}
       {p.reviews?.map((r, i) => (
         <div key={i} className="card">
-          <div className="between"><span className="bold">{r.rater_name}</span><span>{'⭐'.repeat(r.rating)}</span></div>
+          <div className="between"><span className="bold">{r.rater_name}</span><span className="row" style={{ gap: 1 }}>{Array.from({ length: r.rating }, (_, k) => <I key={k} n="star" size={13} className="star-ico" />)}</span></div>
           <div className="faint">{SERVICE[r.service_type] || r.service_type} · {formatDate(r.created_at)}</div>
           {r.comment && <div className="muted mt8">{r.comment}</div>}
         </div>

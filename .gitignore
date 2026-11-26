@@ -5,6 +5,9 @@ dist/
 build/
 uploads/*
 !uploads/.gitkeep
+# Foydalanuvchi fayllari (shaxsiy hujjatlar) hech qachon repoga tushmasin
+backend/uploads/*
+!backend/uploads/.gitkeep
 logs/
 *.log
 .DS_Store
@@ -19,3 +22,6 @@ Thumbs.db
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# DB zaxira nusxalari
+backups/

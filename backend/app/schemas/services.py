@@ -13,12 +13,50 @@ class Point(BaseModel):
 
 # ── Profil ──────────────────────────────────────────────────────────────────
 class ProfileUpdate(BaseModel):
-    phone: str | None = Field(None, max_length=20)
+    # Telefon bu yerda o'zgarmaydi — faqat Telegram orqali tasdiqlanadi (/users/me/phone)
     language: str | None = Field(None, max_length=5)
     company_name: str | None = Field(None, max_length=200)
     bio: str | None = Field(None, max_length=1000)
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
+
+
+class PhoneShare(BaseModel):
+    """WebApp.requestContact() qaytargan imzolangan satr."""
+    response: str = Field(min_length=10, max_length=4096)
+
+
+class PhoneManual(BaseModel):
+    """Faqat DEV_MODE: Telegram'siz lokal sinov uchun."""
+    phone: str = Field(min_length=7, max_length=20)
+
+
+HOME_WIDGETS = ("taxi", "carpool", "cargo", "equipment")
+
+
+class PreferencesIn(BaseModel):
+    # Asosiy sahifada yashirilgan vidjetlar (servis kodlari)
+    home_hidden: list[str] | None = None
+
+    @field_validator("home_hidden")
+    @classmethod
+    def check_widgets(cls, v):
+        if v is None:
+            return v
+        bad = [x for x in v if x not in HOME_WIDGETS]
+        if bad:
+            raise ValueError(f"Noma'lum vidjet: {', '.join(bad)}")
+        return list(dict.fromkeys(v))
+
+
+class SavedPlace(BaseModel):
+    address: str = Field(min_length=1, max_length=300)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+
+
+class OnboardIn(BaseModel):
+    intent: str = Field(pattern="^(client|provider)$")
 
 
 class RolesUpdate(BaseModel):

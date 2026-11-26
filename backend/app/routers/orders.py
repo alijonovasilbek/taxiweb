@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
 from app.auth import get_current_user
 from app.schemas.order import CreateOrderRequest, CancelOrderRequest
-from app.services.order_service import create_order, accept_order, complete_order
-from app.services.yandex_service import get_route
+from app.services.order_service import create_order, accept_order, complete_order, reject_offer, close_offers
+from app.services import push
+from app.services.yandex_service import resolve_route
 from app.services.pricing_service import estimate_price
 from app.socket_manager import sio
 import asyncpg
@@ -11,10 +12,28 @@ import asyncpg
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
+async def _driver_id(conn: asyncpg.Connection, user: dict) -> int | None:
+    if user.get("driver_id"):
+        return user["driver_id"]
+    if user.get("telegram_id"):
+        return await conn.fetchval("SELECT id FROM drivers WHERE telegram_id=$1", user["telegram_id"])
+    return None
+
+
 @router.post("", status_code=201)
 async def create(body: CreateOrderRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    route = await get_route(body.pickup.lat, body.pickup.lng, body.dropoff.lat, body.dropoff.lng)
-    price, _ = await estimate_price(conn, route["distance_km"], route["duration_min"])
+    active = await conn.fetchval(
+        "SELECT id FROM orders WHERE passenger_id=$1 AND status IN ('searching','accepted','driver_arrived','in_progress') LIMIT 1",
+        user["id"],
+    )
+    if active:
+        raise HTTPException(409, f"Sizda faol buyurtma bor (#{active}). Avval uni yakunlang yoki bekor qiling.")
+    route = await resolve_route(body.pickup.lat, body.pickup.lng, body.dropoff.lat, body.dropoff.lng,
+                                body.road_distance_km, body.road_duration_min)
+    try:
+        price, _ = await estimate_price(conn, route["distance_km"], route["duration_min"])
+    except ValueError:
+        raise HTTPException(503, "Taksi tarifi sozlanmagan. Admin panel → Tarif bo'limida tarifni saqlang.")
     order = await create_order(
         conn,
         passenger_id=user["id"],
@@ -44,11 +63,33 @@ async def get_active(user=Depends(get_current_user), conn: asyncpg.Connection = 
     return dict(row) if row else None
 
 
+@router.get("/driver/active")
+async def driver_active(user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
+    """Mini App ijrochi rejimi: haydovchining joriy taksi buyurtmasi (yo'lovchi ma'lumoti bilan)."""
+    driver = await conn.fetchrow("SELECT * FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    if not driver:
+        return {"driver": None, "order": None}
+    row = await conn.fetchrow(
+        """SELECT o.*, u.first_name AS passenger_name, u.phone AS passenger_phone, u.rating AS passenger_rating
+           FROM orders o JOIN users u ON u.id=o.passenger_id
+           WHERE o.driver_id=$1 AND o.status IN ('accepted','driver_arrived','in_progress')
+           ORDER BY o.created_at DESC LIMIT 1""",
+        driver["id"],
+    )
+    d = dict(driver)
+    d.pop("password_hash", None)
+    d.pop("current_location", None)
+    return {"driver": d, "order": dict(row) if row else None}
+
+
 @router.get("/{order_id}")
 async def get_by_id(order_id: int, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
     row = await conn.fetchrow("SELECT * FROM orders WHERE id=$1", order_id)
     if not row:
         raise HTTPException(404, "Order not found")
+    driver_id = await _driver_id(conn, user)
+    if row["passenger_id"] != user.get("id") and (not driver_id or row["driver_id"] != driver_id):
+        raise HTTPException(404, "Order not found")  # boshqaning buyurtmasi borligini ham oshkor qilmaymiz
     return dict(row)
 
 
@@ -66,15 +107,18 @@ async def accept(order_id: int, user=Depends(get_current_user), conn: asyncpg.Co
 
 @router.put("/{order_id}/reject")
 async def reject(order_id: int, body: CancelOrderRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    order = await conn.fetchrow("SELECT passenger_id FROM orders WHERE id=$1", order_id)
-    if order:
-        await sio.emit("order_rejected", {"order_id": order_id, "reason": body.reason}, room=f"passenger:{order['passenger_id']}")
-    return {"success": True}
+    driver_id = await _driver_id(conn, user)
+    if not driver_id:
+        raise HTTPException(403, "Faqat haydovchi rad eta oladi")
+    # Taklif keyingi haydovchiga o'tadi; yo'lovchiga xabar shart emas (u qidiruvni ko'rib turadi)
+    return {"success": await reject_offer(conn, order_id, driver_id)}
 
 
 @router.put("/{order_id}/arrived")
 async def arrived(order_id: int, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
     driver = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    if not driver:
+        raise HTTPException(404, "Driver not found")
     row = await conn.fetchrow(
         "UPDATE orders SET status='driver_arrived',arrived_at=NOW() WHERE id=$1 AND driver_id=$2 RETURNING passenger_id",
         order_id, driver["id"],
@@ -87,6 +131,8 @@ async def arrived(order_id: int, user=Depends(get_current_user), conn: asyncpg.C
 @router.put("/{order_id}/start")
 async def start_ride(order_id: int, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
     driver = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
+    if not driver:
+        raise HTTPException(404, "Driver not found")
     row = await conn.fetchrow(
         "UPDATE orders SET status='in_progress',started_at=NOW() WHERE id=$1 AND driver_id=$2 RETURNING passenger_id",
         order_id, driver["id"],
@@ -106,8 +152,10 @@ async def complete(order_id: int, user=Depends(get_current_user), conn: asyncpg.
 
 
 @router.put("/{order_id}/cancel")
-async def cancel(order_id: int, body: CancelOrderRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    cancelled_by = "driver" if user.get("role") == "driver" else "passenger"
+async def cancel(order_id: int, body: CancelOrderRequest, as_driver: bool = False, user=Depends(get_current_user),
+                 conn: asyncpg.Connection = Depends(get_db)):
+    # Yagona akkauntda haydovchi tomonidan bekor qilish: ?as_driver=true
+    cancelled_by = "driver" if (user.get("role") == "driver" or as_driver) else "passenger"
     reason = body.reason or "Bekor qilindi"
 
     if cancelled_by == "driver":
@@ -137,8 +185,14 @@ async def cancel(order_id: int, body: CancelOrderRequest, user=Depends(get_curre
     if not row:
         raise HTTPException(409, "Order cannot be cancelled")
 
+    await close_offers(conn, order_id)
     if row["driver_id"]:
         await conn.execute("UPDATE drivers SET is_on_ride=false WHERE id=$1", row["driver_id"])
+        if cancelled_by == "passenger":  # ilova fonda bo'lsa ham haydovchi bilsin
+            uid = await conn.fetchval("SELECT user_id FROM drivers WHERE id=$1", row["driver_id"])
+            if uid:
+                push.fire(uid, {"type": "order_cancelled", "order_id": order_id, "reason": reason},
+                          title="Buyurtma bekor qilindi", body=reason)
 
     target_room = f"passenger:{row['passenger_id']}" if cancelled_by == "driver" else (f"driver:{row['driver_id']}" if row["driver_id"] else None)
     if target_room:

@@ -1,5 +1,6 @@
 _bot = None
 
+from app.log import log
 from app.services.bot_retry import with_retry
 
 
@@ -21,7 +22,7 @@ async def send_to_passenger(user_id: int, message: str):
                 label="send_to_passenger",
             )
     except Exception as e:
-        print(f"[bot] send_to_passenger error: {e}")
+        log.warning(f"[bot] send_to_passenger error: {e}")
 
 
 async def send_to_driver(driver_id: int, message: str):
@@ -37,4 +38,4 @@ async def send_to_driver(driver_id: int, message: str):
                 label="send_to_driver",
             )
     except Exception as e:
-        print(f"[bot] send_to_driver error: {e}")
+        log.warning(f"[bot] send_to_driver error: {e}")

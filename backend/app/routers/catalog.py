@@ -1,7 +1,7 @@
 import asyncpg
 from fastapi import APIRouter, Depends, Query
 
-from app.catalog import ROLES, VEHICLE_CATEGORIES, DOC_TYPES
+from app.catalog import ROLES, VEHICLE_CATEGORIES, DOC_TYPES, required_docs
 from app.database import get_db
 from app.deps import current_user
 from app.services import service_pricing
@@ -16,7 +16,7 @@ async def catalog(conn: asyncpg.Connection = Depends(get_db)):
     return {
         "services": [dict(s) for s in services],
         "roles": [{"code": k, **v} for k, v in ROLES.items()],
-        "vehicle_categories": [{"code": k, **v} for k, v in VEHICLE_CATEGORIES.items()],
+        "vehicle_categories": [{"code": k, **v, "required_docs": required_docs(k)} for k, v in VEHICLE_CATEGORIES.items()],
         "doc_types": [{"code": k, "name": v} for k, v in DOC_TYPES.items()],
     }
 

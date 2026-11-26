@@ -1,6 +1,8 @@
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery
+from aiogram.filters import CommandObject
+from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery,
+                           CallbackQuery)
 
 from app.config import settings
 from app.services import notification_service
@@ -21,9 +23,23 @@ def create_bot() -> tuple[Bot, Dispatcher]:
     dp = Dispatcher()
     notification_service.set_bot(bot)
 
+    @dp.message(CommandStart(deep_link=True, magic=F.args.startswith("login_")))
+    async def cmd_app_login(message: Message, command: CommandObject):
+        """Chortoq Ijrochi ilovasiga kirish: ilova ochgan `t.me/<bot>?start=login_<kod>` havolasi."""
+        from app.services.app_login_bot import describe_login
+        text, kb = await describe_login(command.args[len("login_"):])
+        await with_retry(lambda: message.answer(text, reply_markup=kb, parse_mode="HTML"), label="app_login")
+
+    @dp.callback_query(F.data.startswith("al:"))
+    async def on_app_login(query: CallbackQuery):
+        from app.services.app_login_bot import answer_login
+        text = await answer_login(query.data, query.from_user)
+        await query.answer()
+        if query.message:
+            await with_retry(lambda: query.message.edit_text(text, parse_mode="HTML"), label="app_login_answer")
+
     @dp.message(CommandStart())
     async def cmd_start(message: Message):
-        driver_url = cache_busted_url(settings.driver_app_url, "driver-login-20260611")
         app_url = settings.passenger_app_url.rstrip("/")
 
         def page(path: str) -> WebAppInfo:
@@ -36,7 +52,7 @@ def create_bot() -> tuple[Bot, Dispatcher]:
             [InlineKeyboardButton(text="🚚 Yuk tashish", web_app=page("/requests/new/cargo")),
              InlineKeyboardButton(text="🚜 Spets texnika", web_app=page("/requests/new/equipment"))],
             [InlineKeyboardButton(text="🧰 Ijrochi paneli", web_app=page("/provider"))],
-            [InlineKeyboardButton(text="🚖 Taksi haydovchi paneli", web_app=WebAppInfo(url=driver_url))],
+            [InlineKeyboardButton(text="🚖 Taksi haydovchisi", web_app=page("/taxi-driver"))],
         ])
         await with_retry(
             lambda: message.answer(
@@ -68,6 +84,21 @@ def create_bot() -> tuple[Bot, Dispatcher]:
             lambda: message.answer("Qo'llab-quvvatlash: @taxigo_support"),
             label="cmd_support",
         )
+
+    @dp.message(F.contact)
+    async def on_contact(message: Message):
+        """Mini App'dagi "Raqamni ulashish" kontaktni botga yuboradi — faqat o'z raqamini qabul qilamiz."""
+        contact = message.contact
+        if not message.from_user or contact.user_id != message.from_user.id:
+            await with_retry(lambda: message.answer("Faqat o'zingizning raqamingizni ulashing."), label="contact_foreign")
+            return
+        from app.database import pool
+        from app.routers.users import save_verified_phone
+
+        async with pool.acquire() as conn:
+            row = await save_verified_phone(conn, message.from_user.id, contact.phone_number)
+        text = "Raqamingiz tasdiqlandi ✅" if row else "Avval Mini App'ni oching, so'ng raqamni ulashing."
+        await with_retry(lambda: message.answer(text), label="contact_saved")
 
     @dp.pre_checkout_query()
     async def pre_checkout(query: PreCheckoutQuery):

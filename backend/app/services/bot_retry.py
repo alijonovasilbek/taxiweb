@@ -21,9 +21,10 @@ async def with_retry(
             if attempt == attempts:
                 break
             delay = base_delay * attempt
-            print(f"[bot] {label} network error, retry {attempt}/{attempts} in {delay:.1f}s: {error}")
+            log.warning(f"[bot] {label} network error, retry {attempt}/{attempts} in {delay:.1f}s: {error}")
             await asyncio.sleep(delay)
 
     if last_error:
         raise last_error
 
+from app.log import log

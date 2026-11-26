@@ -5,12 +5,13 @@ import { Page, Spinner, StatusBadge, Route, Field, Rating, Modal, Stars } from '
 import { useAppStore } from '../../store/appStore';
 import { formatDateTime, formatPrice, apiError, timeAgo, toInputDateTime } from '../../utils/formatters';
 import { DURATION_UNITS } from '../../utils/constants';
+import { I, ServiceIcon, CategoryIcon, CategoryGlyph } from '../../components/icons';
 
 const unitLabel = (u) => DURATION_UNITS.find((x) => x.code === u)?.label || '';
 
 function Details({ r, category }) {
   const rows = [
-    category && ['Transport', `${category.icon} ${category.name}`],
+    category && ['Transport', category.name],
     r.cargo_type && ['Yuk turi', r.cargo_type],
     r.weight_kg && ['Og\'irligi', `${r.weight_kg} kg`],
     r.volume_m3 && ['Hajmi', `${r.volume_m3} m³`],
@@ -35,7 +36,7 @@ function Details({ r, category }) {
           </div>
         ))}
       </div>
-      {r.description && <div className="muted mt12">💬 {r.description}</div>}
+      {r.description && <div className="muted mt12">{r.description}</div>}
     </div>
   );
 }
@@ -65,7 +66,7 @@ function OfferForm({ request, myOffer, onDone }) {
         vehicle_id: Number(form.vehicle_id), price: Number(form.price), message: form.message || null,
         available_at: form.available_at || null,
       });
-      toast('✅ Taklif yuborildi', 'Mijoz tanlasa darhol xabar olasiz');
+      toast('Taklif yuborildi', 'Mijoz tanlasa darhol xabar olasiz');
       onDone();
     } catch (e) { toast('Xatolik', apiError(e), 'error'); }
   };
@@ -123,7 +124,7 @@ export default function RequestDetail() {
   }, 'Rahmat! Bahoyingiz saqlandi');
 
   return (
-    <Page title={r.service_type === 'cargo' ? '🚚 Yuk tashish' : '🚜 Spets texnika'} sub={`#${r.id} · ${timeAgo(r.created_at)}`}>
+    <Page title={r.service_type === 'cargo' ? 'Yuk tashish' : 'Spets texnika'} sub={`#${r.id} · ${timeAgo(r.created_at)}`}>
       <Details r={r} category={cat} />
 
       {/* ── Mijoz ko'rinishi ── */}
@@ -142,10 +143,10 @@ export default function RequestDetail() {
                     </div>
                     <div className="price">{formatPrice(o.price)}</div>
                   </div>
-                  {o.provider_phone && <a className="btn secondary block mt12" href={`tel:${o.provider_phone}`}>📞 {o.provider_phone}</a>}
+                  {o.provider_phone && <a className="btn secondary block mt12" href={`tel:${o.provider_phone}`}><I n="phone" size={17} /> {o.provider_phone}</a>}
                 </div>
               ))}
-              <button className="btn green block mt8" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/complete`), 'Yakunlandi')}>✅ Ish bajarildi</button>
+              <button className="btn green block mt8" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/complete`), 'Yakunlandi')}><I n="done" size={17} /> Ish bajarildi</button>
               {r.status === 'assigned' && (
                 <button className="btn red-soft block mt8" disabled={busy} onClick={() => { if (confirm('So\'rovni bekor qilasizmi?')) act(() => api.post(`/requests/${r.id}/cancel`, {}), 'Bekor qilindi'); }}>Bekor qilish</button>
               )}
@@ -156,7 +157,7 @@ export default function RequestDetail() {
             <>
               <div className="section-title">Takliflar ({r.offers?.length || 0})</div>
               {r.offers?.length === 0 && (
-                <div className="card faint">⏳ Mos ijrochilarga xabar yuborildi. Takliflar shu yerda real vaqtda paydo bo'ladi.</div>
+                <div className="card faint">Mos ijrochilarga xabar yuborildi. Takliflar shu yerda real vaqtda paydo bo'ladi.</div>
               )}
               {r.offers?.map((o) => (
                 <div key={o.id} className="card">
@@ -164,13 +165,13 @@ export default function RequestDetail() {
                     <div className="clickable grow" onClick={() => navigate(`/users/${o.provider_id}`)}>
                       <div className="bold">{o.first_name} {o.last_name || ''}</div>
                       <Rating value={o.provider_rating} count={o.provider_reviews} />
-                      <div className="faint">{category(o.vehicle_category)?.icon} {o.vehicle_model} {o.capacity_kg ? `· ${o.capacity_kg} kg` : ''}</div>
-                      {o.available_at && <div className="faint">🕒 {formatDateTime(o.available_at)}</div>}
-                      {o.message && <div className="muted mt8">💬 {o.message}</div>}
+                      <div className="faint"><CategoryGlyph code={o.vehicle_category} size={13} /> {o.vehicle_model} {o.capacity_kg ? `· ${o.capacity_kg} kg` : ''}</div>
+                      {o.available_at && <div className="faint"><I n="clock" size={13} /> {formatDateTime(o.available_at)}</div>}
+                      {o.message && <div className="muted mt8">{o.message}</div>}
                     </div>
                     <div className="col" style={{ alignItems: 'flex-end' }}>
                       <div className="price" style={{ fontSize: 17 }}>{formatPrice(o.price)}</div>
-                      <button className="btn sm mt8" disabled={busy} onClick={() => { if (confirm(`${o.first_name} taklifini ${formatPrice(o.price)} ga qabul qilasizmi?`)) act(() => api.post(`/requests/${r.id}/offers/${o.id}/accept`), '✅ Ijrochi tanlandi'); }}>Tanlash</button>
+                      <button className="btn sm mt8" disabled={busy} onClick={() => { if (confirm(`${o.first_name} taklifini ${formatPrice(o.price)} ga qabul qilasizmi?`)) act(() => api.post(`/requests/${r.id}/offers/${o.id}/accept`), 'Ijrochi tanlandi'); }}>Tanlash</button>
                     </div>
                   </div>
                 </div>
@@ -199,13 +200,13 @@ export default function RequestDetail() {
       {!r.is_client && (
         <>
           {r.is_provider && active && (
-            <div className="card" style={{ border: '1.5px solid #BFDBFE' }}>
+            <div className="card" style={{ border: '1.5px solid #e9c3cd' }}>
               <div className="card-title">Mijoz: {r.client_name}</div>
               <Rating value={r.client_rating} />
-              {r.client_phone && <a className="btn secondary block mt12" href={`tel:${r.client_phone}`}>📞 {r.client_phone}</a>}
+              {r.client_phone && <a className="btn secondary block mt12" href={`tel:${r.client_phone}`}><I n="phone" size={17} /> {r.client_phone}</a>}
               <div className="between mt12"><span className="muted">Kelishilgan narx</span><span className="price">{formatPrice(r.final_price)}</span></div>
-              {r.status === 'assigned' && <button className="btn block mt12" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/start`), '🚀 Ish boshlandi')}>🚀 Ishni boshlash</button>}
-              {r.status === 'in_progress' && <button className="btn green block mt12" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/complete`), 'Yakunlandi')}>✅ Ishni yakunlash</button>}
+              {r.status === 'assigned' && <button className="btn block mt12" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/start`), 'Ish boshlandi')}><I n="rocket" size={17} /> Ishni boshlash</button>}
+              {r.status === 'in_progress' && <button className="btn green block mt12" disabled={busy} onClick={() => act(() => api.post(`/requests/${r.id}/complete`), 'Yakunlandi')}><I n="done" size={17} /> Ishni yakunlash</button>}
               {r.status === 'assigned' && (
                 <button className="btn red-soft block mt8" disabled={busy} onClick={() => { const reason = prompt('Voz kechish sababi?'); if (reason !== null) act(() => api.post(`/requests/${r.id}/cancel`, { reason }), 'Siz ishdan voz kechdingiz'); }}>Voz kechish</button>
               )}
@@ -214,7 +215,7 @@ export default function RequestDetail() {
           {r.status === 'open' && (
             <>
               <div className="card row">
-                <span>👤</span>
+                <span className="icon-box" style={{ borderRadius: '50%' }}><I n="user" size={20} /></span>
                 <div className="grow"><div className="bold">{r.client_name}</div><Rating value={r.client_rating} /></div>
                 {r.my_offer && <StatusBadge status={r.my_offer.status} />}
               </div>
@@ -231,7 +232,7 @@ export default function RequestDetail() {
       )}
 
       {r.status === 'completed' && (r.is_client || r.is_provider) && !r.reviewed && (
-        <button className="btn accent block" onClick={() => setReviewOpen(true)}>⭐ {r.is_client ? 'Ijrochini' : 'Mijozni'} baholash</button>
+        <button className="btn accent block" onClick={() => setReviewOpen(true)}><I n="star" size={17} /> {r.is_client ? 'Ijrochini' : 'Mijozni'} baholash</button>
       )}
       {r.status === 'cancelled' && r.cancel_reason && <div className="card faint">Bekor qilish sababi: {r.cancel_reason}</div>}
 

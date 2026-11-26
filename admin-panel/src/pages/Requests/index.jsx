@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { Header, Table, Pager, Btn, Select, StatusBadge, Drawer, KV, Card, CATEGORY, SERVICE, fmtMoney, fmtDate } from '../../components/ui';
+import { I } from '../../components/icons';
 
 const UNIT = { hour: 'soat', shift: 'smena', day: 'kun' };
 
@@ -28,17 +29,17 @@ function RequestDrawer({ id, onClose, onChanged }) {
           ['Mijoz', `${r.client_name} ${r.client_phone || ''}`], ['Ijrochi', r.provider_name || '—'],
           ['Yaratilgan', fmtDate(r.created_at)], r.cancel_reason && ['Bekor sababi', r.cancel_reason],
         ]} />
-        {r.description && <div style={{ fontSize: 13, marginTop: 10, color: '#475569' }}>💬 {r.description}</div>}
+        {r.description && <div style={{ fontSize: 13, marginTop: 10, color: 'var(--muted)' }}><I n="chat" size={13} /> {r.description}</div>}
         {!['completed', 'cancelled'].includes(r.status) && <Btn kind="red" style={{ marginTop: 14 }} onClick={cancel}>So'rovni bekor qilish</Btn>}
       </Card>
       <h3 style={{ fontSize: 15 }}>Takliflar ({r.offers.length})</h3>
       {r.offers.map((o) => (
         <Card key={o.id} style={{ marginBottom: 8, padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div><b>{o.first_name}</b> · {CATEGORY[o.category]} {o.model}<div style={{ color: '#64748B', fontSize: 12 }}>{o.phone} · {fmtDate(o.created_at)}</div></div>
+            <div><b>{o.first_name}</b> · {CATEGORY[o.category]} {o.model}<div style={{ color: 'var(--muted)', fontSize: 12 }}>{o.phone} · {fmtDate(o.created_at)}</div></div>
             <div style={{ textAlign: 'right' }}><b>{fmtMoney(o.price)}</b><div><StatusBadge status={o.status} /></div></div>
           </div>
-          {o.message && <div style={{ fontSize: 13, marginTop: 6 }}>💬 {o.message}</div>}
+          {o.message && <div style={{ fontSize: 13, marginTop: 6 }}><I n="chat" size={13} /> {o.message}</div>}
         </Card>
       ))}
     </Drawer>
@@ -66,10 +67,10 @@ export default function Requests() {
         </>
       } />
       <Table rows={data.requests} onRowClick={(r) => setOpen(r.id)} columns={[
-        { title: '#', render: (r) => <span style={{ color: '#94A3B8' }}>{r.id}</span> },
+        { title: '#', render: (r) => <span style={{ color: 'var(--faint)' }}>{r.id}</span> },
         { title: 'Servis', render: (r) => SERVICE[r.service_type] },
-        { title: 'So\'rov', render: (r) => <div><b>{r.title || CATEGORY[r.vehicle_category] || '—'}</b><div style={{ color: '#64748B', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.from_address}{r.to_address ? ` → ${r.to_address}` : ''}</div></div> },
-        { title: 'Mijoz', render: (r) => <div>{r.client_name}<div style={{ color: '#64748B' }}>{r.client_phone || ''}</div></div> },
+        { title: 'So\'rov', render: (r) => <div><b>{r.title || CATEGORY[r.vehicle_category] || '—'}</b><div style={{ color: 'var(--muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.from_address}{r.to_address ? ` → ${r.to_address}` : ''}</div></div> },
+        { title: 'Mijoz', render: (r) => <div>{r.client_name}<div style={{ color: 'var(--muted)' }}>{r.client_phone || ''}</div></div> },
         { title: 'Takliflar', render: (r) => r.offers_count },
         { title: 'Ijrochi', render: (r) => r.provider_name || '—' },
         { title: 'Narx', render: (r) => fmtMoney(r.final_price || r.budget || r.estimated_price) },

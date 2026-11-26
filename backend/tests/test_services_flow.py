@@ -27,7 +27,14 @@ def run(coro):
 
 async def _cleanup():
     async with database.pool.acquire() as conn:
-        await conn.execute("DELETE FROM users WHERE telegram_id BETWEEN $1 AND $2", TEST_TG_MIN, TEST_TG_MAX)
+        rng = (TEST_TG_MIN, TEST_TG_MAX)
+        orders = """SELECT id FROM orders WHERE passenger_id IN (SELECT id FROM users WHERE telegram_id BETWEEN $1 AND $2)
+                    OR driver_id IN (SELECT id FROM drivers WHERE telegram_id BETWEEN $1 AND $2)"""
+        for table in ("payments", "ratings"):
+            await conn.execute(f"DELETE FROM {table} WHERE order_id IN ({orders})", *rng)
+        await conn.execute(f"DELETE FROM orders WHERE id IN ({orders})", *rng)
+        await conn.execute("DELETE FROM drivers WHERE telegram_id BETWEEN $1 AND $2", *rng)
+        await conn.execute("DELETE FROM users WHERE telegram_id BETWEEN $1 AND $2", *rng)
 
 
 @pytest.fixture(scope="module")
@@ -76,11 +83,26 @@ def test_catalog_and_profile(client):
     assert me["roles"] == ["client"]
     assert "stats" in me
     r = run(client.put("/api/users/me/roles", headers=h(u), json={"roles": ["cargo", "company"]}))
-    assert r.status_code == 200 and r.json()["roles"] == ["client", "cargo", "company"]
+    # Rollarni erkin yoqib bo'lmaydi — tasdiqlangan transport kerak
+    assert r.status_code == 403
+    assert me["eligible_roles"] == ["client"]
     r = run(client.put("/api/users/me/roles", headers=h(u), json={"roles": ["hacker"]}))
     assert r.status_code == 422
-    r = run(client.put("/api/users/me", headers=h(u), json={"phone": "+998901234567", "company_name": "Chortoq Qurilish"}))
-    assert r.json()["phone"] == "+998901234567"
+    # Telefon profil orqali o'zgarmaydi — faqat Telegram (dev rejimda /phone/dev) orqali tasdiqlanadi
+    r = run(client.put("/api/users/me", headers=h(u), json={"phone": "+998900000000", "company_name": "Chortoq Qurilish"}))
+    assert r.json()["company_name"] == "Chortoq Qurilish" and r.json()["phone"] is None
+    r = run(client.post("/api/users/me/phone/dev", headers=h(u), json={"phone": "90 123 45 67"}))
+    assert r.json()["phone"] == "+998901234567" and r.json()["phone_verified"] is True
+
+
+PNG = bytes([0x89]) + b"PNG" + bytes([13, 10, 26, 10]) + b"0" * 64
+
+
+def upload_docs(client, auth, v):
+    for code in ("passport", "license", "tech_passport"):
+        r = run(client.post(f"/api/vehicles/{v['id']}/documents", headers=h(auth),
+                            data={"doc_type": code}, files={"file": (f"{code}.png", PNG, "image/png")}))
+        assert r.status_code == 201, r.text
 
 
 def _vehicle(client, auth, admin, **kw):
@@ -88,6 +110,10 @@ def _vehicle(client, auth, admin, **kw):
     assert r.status_code == 201, r.text
     v = r.json()
     assert v["status"] == "pending"
+    # Hujjatlarsiz tasdiqlanmaydi
+    r = run(client.put(f"/api/admin/vehicles/{v['id']}/approve", headers=h(admin)))
+    assert r.status_code == 400 and "Hujjatlar yetishmaydi" in r.text
+    upload_docs(client, auth, v)
     r = run(client.put(f"/api/admin/vehicles/{v['id']}/approve", headers=h(admin)))
     assert r.status_code == 200, r.text
     run(client.put(f"/api/vehicles/{v['id']}/availability", headers=h(auth),
@@ -184,8 +210,13 @@ def test_cargo_flow_with_cross_service_matching(client):
     prov = run(client.get(f"/api/users/{acc['provider_id']}/public", headers=h(client_u))).json()
     assert float(prov["provider_rating"]) == 4.0 and prov["provider_reviews"] == 1
 
-    notes = run(client.get("/api/notifications", headers=h(labo_owner))).json()
-    types = {n["type"] for n in notes["items"]}
+    # Bildirishnomalar fon vazifasida (asyncio.create_task) yuboriladi — biroz kutamiz
+    for _ in range(30):
+        notes = run(client.get("/api/notifications", headers=h(labo_owner))).json()
+        types = {n["type"] for n in notes["items"]}
+        if {"request_new", "offer_accepted", "vehicle_status"} <= types:
+            break
+        run(asyncio.sleep(0.1))
     assert {"request_new", "offer_accepted", "vehicle_status"} <= types
     run(client.put("/api/notifications/read-all", headers=h(labo_owner)))
     assert run(client.get("/api/notifications/unread-count", headers=h(labo_owner))).json()["unread"] == 0

@@ -1,10 +1,14 @@
+import json
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth import get_current_user
+from app.auth import get_current_user, verify_webapp_data
+from app.security import rate_limit, require_dev_local
 from app.database import get_db
 from app.deps import current_user
-from app.schemas.services import ProfileUpdate, RolesUpdate
+from app.services.roles import ADMIN_ONLY_ROLES, eligible_roles
+from app.schemas.services import PreferencesIn, SavedPlace, OnboardIn, PhoneManual, PhoneShare, ProfileUpdate, RolesUpdate
 from app.utils import row_to_dict, rows_to_list
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -26,7 +30,9 @@ async def _stats(conn: asyncpg.Connection, user_id: int) -> dict:
 
 @router.get("/me")
 async def get_me(user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
-    return {**row_to_dict(user), "stats": await _stats(conn, user["id"])}
+    eligible = await eligible_roles(conn, user["id"]) | (set(user.get("roles") or []) & ADMIN_ONLY_ROLES)
+    return {**row_to_dict(user), "stats": await _stats(conn, user["id"]), "eligible_roles": sorted(eligible),
+            "saved_places": _places(user.get("saved_places")), "preferences": _places(user.get("preferences"))}
 
 
 @router.put("/me")
@@ -41,8 +47,101 @@ async def update_me(body: ProfileUpdate, user=Depends(current_user), conn: async
     return row_to_dict(row)
 
 
+def normalize_phone(raw: str) -> str:
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) == 9:  # 90 123 45 67 → O'zbekiston kodi
+        digits = "998" + digits
+    if len(digits) < 9 or len(digits) > 15:
+        raise HTTPException(400, "Telefon raqami noto'g'ri")
+    return "+" + digits
+
+
+async def save_verified_phone(conn: asyncpg.Connection, telegram_id: int, phone: str):
+    return await conn.fetchrow(
+        "UPDATE users SET phone=$2, phone_verified=TRUE, updated_at=NOW() WHERE telegram_id=$1 RETURNING *",
+        telegram_id, normalize_phone(phone),
+    )
+
+
+@router.post("/me/phone", dependencies=[Depends(rate_limit("phone", 10, 300))])
+async def share_phone(body: PhoneShare, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    """WebApp.requestContact() javobini tekshiradi: imzo Telegram'niki va kontakt aynan shu foydalanuvchiniki."""
+    params = verify_webapp_data(body.response, max_age=600)
+    try:
+        contact = json.loads(params.get("contact") or "{}")
+    except ValueError:
+        raise HTTPException(400, "Kontakt ma'lumoti noto'g'ri")
+    if not contact.get("phone_number"):
+        raise HTTPException(400, "Kontaktda telefon raqami yo'q")
+    if contact.get("user_id") and int(contact["user_id"]) != int(user["telegram_id"]):
+        raise HTTPException(403, "Faqat o'zingizning raqamingizni ulashishingiz mumkin")
+    row = await save_verified_phone(conn, user["telegram_id"], contact["phone_number"])
+    return row_to_dict(row)
+
+
+@router.post("/me/phone/dev", dependencies=[Depends(require_dev_local)])
+async def set_phone_dev(body: PhoneManual, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    row = await save_verified_phone(conn, user["telegram_id"], body.phone)
+    return row_to_dict(row)
+
+
+@router.post("/me/onboard")
+async def onboard(body: OnboardIn, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    if not user.get("phone_verified"):
+        raise HTTPException(400, "Avval telefon raqamingizni ulashing")
+    row = await conn.fetchrow(
+        "UPDATE users SET onboarded_at=COALESCE(onboarded_at, NOW()), updated_at=NOW() WHERE id=$1 RETURNING *",
+        user["id"],
+    )
+    return {**row_to_dict(row), "stats": await _stats(conn, user["id"])}
+
+
+@router.put("/me/preferences")
+async def update_preferences(body: PreferencesIn, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    """Faqat yuborilgan maydonlar yangilanadi (qolgan sozlamalar saqlanib qoladi)."""
+    patch = body.model_dump(exclude_none=True)
+    row = await conn.fetchrow(
+        "UPDATE users SET preferences = preferences || $2::jsonb, updated_at=NOW() WHERE id=$1 RETURNING preferences",
+        user["id"], json.dumps(patch),
+    )
+    return _places(row["preferences"])
+
+
+PLACE_KINDS = ("home", "work")
+
+
+@router.put("/me/places/{kind}")
+async def save_place(kind: str, body: SavedPlace, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    if kind not in PLACE_KINDS:
+        raise HTTPException(400, "Faqat home yoki work")
+    row = await conn.fetchrow(
+        "UPDATE users SET saved_places = saved_places || jsonb_build_object($2::text, $3::jsonb), updated_at=NOW() "
+        "WHERE id=$1 RETURNING saved_places", user["id"], kind, json.dumps(body.model_dump()),
+    )
+    return _places(row["saved_places"])
+
+
+@router.delete("/me/places/{kind}")
+async def delete_place(kind: str, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    row = await conn.fetchrow(
+        "UPDATE users SET saved_places = saved_places - $2::text, updated_at=NOW() WHERE id=$1 RETURNING saved_places",
+        user["id"], kind,
+    )
+    return _places(row["saved_places"])
+
+
+def _places(raw) -> dict:
+    return json.loads(raw) if isinstance(raw, str) else (raw or {})
+
+
 @router.put("/me/roles")
 async def update_roles(body: RolesUpdate, user=Depends(current_user), conn: asyncpg.Connection = Depends(get_db)):
+    """Foydalanuvchi rolni faqat o'chira oladi (masalan, vaqtincha ijrochi emas). Yangi rol tasdiqlangan
+    transportdan keladi — erkin qo'shib bo'lmaydi."""
+    allowed = await eligible_roles(conn, user["id"]) | (set(user.get("roles") or []) & ADMIN_ONLY_ROLES)
+    extra = [r for r in body.roles if r not in allowed]
+    if extra:
+        raise HTTPException(403, "Bu rol uchun admin tasdiqlagan transport kerak: " + ", ".join(extra))
     row = await conn.fetchrow(
         "UPDATE users SET roles=$2::text[], updated_at=NOW() WHERE id=$1 RETURNING *", user["id"], body.roles
     )
