@@ -5,9 +5,10 @@ import { AppState, View } from 'react-native';
 import { Badge, Button, Card, Icon, Screen, T } from '../components/ui';
 import { brand } from '../lib/device';
 import {
-  locationState, notificationState, openAppSettings, openBatterySettings, requestBackgroundLocation,
-  requestForegroundLocation, requestNotifications, type PermState,
+  locationState, notificationState, openAppSettings, openBatterySettings, requestLocation, requestNotifications,
+  type PermState,
 } from '../lib/permissions';
+import { getItem, setItem } from '../lib/storage';
 import { useAuth } from '../store/auth';
 import { useTheme } from '../theme';
 
@@ -33,6 +34,8 @@ const BRAND_TIPS: Record<ReturnType<typeof brand>, string[]> = {
   other: ["Batareya sozlamalarida ilova uchun «Cheklovsiz» rejimini tanlang"],
 };
 
+const BATTERY_KEY = 'onboarding.battery';
+
 type Step = { key: string; icon: string; title: string; text: string; state: PermState | 'info'; action: () => Promise<unknown>; actionTitle: string };
 
 export default function Permissions() {
@@ -40,14 +43,15 @@ export default function Permissions() {
   const router = useRouter();
   const done = useAuth((s) => s.permissionsDone);
   const setDone = useAuth((s) => s.setPermissionsDone);
-  const [loc, setLoc] = useState<{ foreground: PermState; background: PermState }>({ foreground: 'undetermined', background: 'undetermined' });
+  const [loc, setLoc] = useState<PermState>('undetermined');
   const [notif, setNotif] = useState<PermState>('undetermined');
   const [batteryVisited, setBatteryVisited] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [l, n] = await Promise.all([locationState(), notificationState()]);
+    const [l, n, b] = await Promise.all([locationState(), notificationState(), getItem(BATTERY_KEY)]);
     setLoc(l);
     setNotif(n);
+    setBatteryVisited(b === '1');
   }, []);
 
   // Sozlamalardan qaytganda holatni yangilaymiz
@@ -67,32 +71,28 @@ export default function Permissions() {
   const steps: Step[] = [
     {
       key: 'location', icon: 'pin', title: 'Joylashuv',
-      text: "Yaqin buyurtmalarni topish va yo'lovchiga qayerdaligingizni ko'rsatish uchun.",
-      state: loc.foreground, action: run(requestForegroundLocation), actionTitle: 'Ruxsat berish',
-    },
-    {
-      key: 'background', icon: 'shield', title: 'Fonda joylashuv — «Har doim»',
-      text: "Ekran o'chganda ham onlayn qolish uchun. Ochilgan oynada «Har doim ruxsat berish»ni tanlang. Joylashuv faqat siz onlayn paytingizda yuboriladi.",
-      state: loc.background, action: run(requestBackgroundLocation), actionTitle: 'Sozlash',
+      text: "Yaqin buyurtmalarni topish va yo'lovchiga qayerdaligingizni ko'rsatish uchun. «Ilova ishlayotganda» yetarli — joylashuv faqat siz onlayn paytingizda yuboriladi.",
+      state: loc, action: run(requestLocation), actionTitle: 'Ruxsat berish',
     },
     {
       key: 'notifications', icon: 'bell', title: 'Bildirishnomalar',
-      text: "Yangi buyurtma ilova yopiq bo'lsa ham qo'ng'iroq bo'lib kelishi uchun.",
+      text: "Yangi buyurtma va so'rovlar haqida xabar olish uchun, ilova fonda bo'lsa ham.",
       state: notif, action: run(requestNotifications), actionTitle: 'Ruxsat berish',
     },
     {
       key: 'battery', icon: 'battery', title: 'Batareya cheklovi',
-      text: "Ro'yxatdan Chortoq Ijrochi'ni topib, «Cheklanmagan» (optimallashtirmaslik) ni tanlang.",
+      text: "Telefon onlayn paytingizda ilovani «uxlatib» qo'ymasligi uchun. Ochilgan oynada «Ruxsat berish»ni bosing.",
       state: batteryVisited ? 'granted' : 'info',
       action: async () => {
         await openBatterySettings();
+        await setItem(BATTERY_KEY, '1');
         setBatteryVisited(true);
       },
-      actionTitle: 'Ochish',
+      actionTitle: 'Sozlash',
     },
   ];
 
-  const ready = loc.foreground === 'granted' && notif === 'granted';
+  const ready = loc === 'granted' && notif === 'granted';
   const finish = () => {
     setDone(true);
     router.replace('/(tabs)');
@@ -116,6 +116,8 @@ export default function Permissions() {
               kind="secondary"
               onPress={st.state === 'denied' ? run(openAppSettings) : st.action}
             />
+          ) : st.key === 'battery' ? (
+            <Button title="Qayta ochish" kind="ghost" onPress={st.action} />
           ) : null}
         </Card>
       ))}
@@ -128,6 +130,7 @@ export default function Permissions() {
       </Card>
       <Button title={done ? 'Saqlash' : 'Davom etish'} disabled={!ready} onPress={finish} />
       {!ready ? <T kind="small" style={{ textAlign: 'center' }}>Joylashuv va bildirishnomalarga ruxsat bering</T> : null}
+      {/* Keyinroq: bosh sahifada eslatma turadi va onlayn bo'lishda ruxsat qayta so'raladi */}
       {!ready && !done ? <Button title="Keyinroq" kind="ghost" onPress={finish} /> : null}
     </Screen>
   );

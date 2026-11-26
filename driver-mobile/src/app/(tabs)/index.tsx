@@ -1,7 +1,11 @@
-import { useRouter } from 'expo-router';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Linking, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { useProviderHome } from '../../api/hooks';
+import { ApiError } from '../../api/client';
+import { useAppVersion, useProviderHome } from '../../api/hooks';
+import { BOT_URL } from '../../config';
+import { essentialsGranted } from '../../lib/permissions';
 import { Badge, Button, Card, Empty, ErrorNote, Icon, Row, Screen, T, money } from '../../components/ui';
 import { SERVICE_NAMES } from '../../lib/catalog';
 import { font, radius, useTheme } from '../../theme';
@@ -16,6 +20,14 @@ export default function Home() {
   const t = useTheme();
   const router = useRouter();
   const { data, error, isLoading, isRefetching, refetch } = useProviderHome();
+  const version = useAppVersion();
+  const [permsOk, setPermsOk] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      void essentialsGranted().then(setPermsOk);
+    }, []),
+  );
+  const offline = error instanceof ApiError && error.status === 0;
 
   const hour = new Date().getHours();
   const greet = hour < 5 ? 'Xayrli tun' : hour < 12 ? 'Xayrli tong' : hour < 18 ? 'Xayrli kun' : 'Xayrli kech';
@@ -39,7 +51,35 @@ export default function Home() {
         </View>
       </View>
 
-      <ErrorNote error={error} />
+      {offline ? (
+        <Card style={{ backgroundColor: t.orangeSoft }}>
+          <T color={t.orangeInk}>Internet aloqasi yo'q — oxirgi ma'lumotlar ko'rsatilmoqda.</T>
+        </Card>
+      ) : (
+        <ErrorNote error={error} />
+      )}
+
+      {data?.phone_required ? (
+        <Card style={{ backgroundColor: t.orangeSoft }}>
+          <T color={t.orangeInk}>
+            Telefon raqamingiz tasdiqlanmagan. Yo'lovchi va mijozlar siz bilan bog'lana olishi uchun botda «📱 Raqamni
+            ulashish» tugmasini bosing.
+          </T>
+          <Button title="Botni ochish" kind="secondary" icon="send" onPress={() => Linking.openURL(BOT_URL)} />
+        </Card>
+      ) : null}
+
+      {!permsOk ? (
+        <Card onPress={() => router.push('/permissions')} style={{ backgroundColor: t.redSoft }}>
+          <Row icon="shield" title="Telefon to'liq sozlanmagan" subtitle="Joylashuv yoki bildirishnomaga ruxsat yo'q — buyurtmalar kelmasligi mumkin" onPress={() => router.push('/permissions')} />
+        </Card>
+      ) : null}
+
+      {version.data?.update_available && version.data.apk_url ? (
+        <Card onPress={() => Linking.openURL(version.data!.apk_url!)}>
+          <Row icon="refresh" title={`Yangi versiya: ${version.data.latest}`} subtitle={version.data.changelog ?? 'Yuklab olish uchun bosing'} onPress={() => Linking.openURL(version.data!.apk_url!)} />
+        </Card>
+      ) : null}
 
       {data?.active_order ? (
         <Card onPress={() => router.push('/taxi')} style={{ borderWidth: 2, borderColor: t.primary }}>

@@ -1,35 +1,53 @@
+import { useRouter } from 'expo-router';
 import { RefreshControl } from 'react-native';
 
-import { useProviderHome } from '../../api/hooks';
-import { Badge, Card, Empty, Row, Screen, T } from '../../components/ui';
+import { useMyTrips } from '../../api/hooks';
+import { Badge, Button, Card, Empty, ErrorNote, Row, Screen, T, money } from '../../components/ui';
+import { TRIP_STATUS, fmtDateTime } from '../../lib/format';
 import { useTheme } from '../../theme';
 
-/** Po'puti qatnovlari. Qatnov ochish va bronlarni boshqarish — 4-bosqich. */
+/** Po'puti: mening qatnovlarim, yangi qatnov ochish (PLAN-ANDROID §6, 7–8) */
 export default function Carpool() {
   const t = useTheme();
-  const { data, isRefetching, refetch } = useProviderHome();
-  const trips = data?.carpool_trips ?? [];
+  const router = useRouter();
+  const { data, error, isRefetching, refetch } = useMyTrips();
+  const active = (data ?? []).filter((x) => ['active', 'full', 'departed'].includes(x.status));
+  const past = (data ?? []).filter((x) => !['active', 'full', 'departed'].includes(x.status)).slice(0, 15);
 
   return (
     <Screen refresh={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={t.primary} />}>
       <T kind="title">Qatnovlar</T>
-      {trips.length ? (
+      <Button title="Yangi qatnov ochish" icon="carpool" onPress={() => router.push('/trip/new')} />
+      <ErrorNote error={error} />
+      {data && !active.length ? (
         <Card>
-          {trips.map((tr) => (
+          <Empty icon="carpool" title="Faol qatnov yo'q" text="Qatnov oching — yo'lovchilar Mini App'da topib, joy band qiladi. Bron so'rovlari shu yerda tasdiqlanadi." />
+        </Card>
+      ) : null}
+      {active.map((tr) => (
+        <Card key={tr.id} onPress={() => router.push({ pathname: '/trip/[id]', params: { id: String(tr.id) } })}>
+          <Row
+            icon="carpool"
+            title={`${tr.from_address} → ${tr.to_address}`}
+            subtitle={`${fmtDateTime(tr.departure_at)} · bo'sh: ${tr.seats_available}/${tr.seats_total} · ${money(tr.price_per_seat)}`}
+            right={tr.pending_bookings ? <Badge text={`${tr.pending_bookings} bron`} tone="orange" /> : <Badge text={TRIP_STATUS[tr.status]?.text ?? tr.status} tone={TRIP_STATUS[tr.status]?.tone ?? 'neutral'} />}
+          />
+        </Card>
+      ))}
+      {past.length ? (
+        <Card>
+          <T kind="label">O'tgan qatnovlar</T>
+          {past.map((tr) => (
             <Row
               key={tr.id}
-              icon="carpool"
               title={`${tr.from_address} → ${tr.to_address}`}
-              subtitle={`${new Date(tr.departure_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · bo'sh joy: ${tr.seats_available}/${tr.seats_total}`}
-              right={tr.pending_bookings ? <Badge text={`${tr.pending_bookings} bron`} tone="orange" /> : undefined}
+              subtitle={fmtDateTime(tr.departure_at)}
+              right={<Badge text={TRIP_STATUS[tr.status]?.text ?? tr.status} tone={TRIP_STATUS[tr.status]?.tone ?? 'neutral'} />}
+              onPress={() => router.push({ pathname: '/trip/[id]', params: { id: String(tr.id) } })}
             />
           ))}
         </Card>
-      ) : (
-        <Card>
-          <Empty icon="carpool" title="Faol qatnov yo'q" text="Qatnov ochish va bronlarni tasdiqlash keyingi yangilanishda qo'shiladi. Hozircha Mini App orqali." />
-        </Card>
-      )}
+      ) : null}
     </Screen>
   );
 }

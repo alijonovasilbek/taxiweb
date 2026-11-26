@@ -6,3 +6,6 @@ export const SUPPORT = '@taxigo_support';
 
 /** Telegram orqali kirish: kod muddati tugaguncha shu oraliqda so'raymiz */
 export const LOGIN_POLL_MS = 2000;
+
+/** Chortoq Services boti: kirish, raqam ulashish, Mini App */
+export const BOT_URL = 'https://t.me/chortoqgotaxibot';

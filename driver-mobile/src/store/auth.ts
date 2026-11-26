@@ -21,6 +21,8 @@ export const useAuth = create<AuthState>((set) => ({
   bootstrap: async () => {
     const [has, perms] = await Promise.all([loadSession(), getItem(KEYS.permissionsDone)]);
     set({ status: has ? 'signedIn' : 'signedOut', permissionsDone: perms === '1' });
+    // Har ochilishda: ilova versiyasi va qurilma ma'lumoti serverda yangilansin (KAMCHILIKLAR-ANDROID #9)
+    if (has) void registerDevice();
   },
   completeLogin: async (t) => {
     await saveTokens(t);
@@ -32,6 +34,13 @@ export const useAuth = create<AuthState>((set) => ({
     void setItem(KEYS.permissionsDone, v ? '1' : null);
   },
   logout: async (allDevices = false) => {
+    // Avval taksi onlayn holatini o'chiramiz — aks holda fon GPS va buyurtmalar chiqishdan keyin ham davom etadi
+    try {
+      const { goOffline } = await import('../lib/taxi');
+      await goOffline();
+    } catch {
+      // haydovchi bo'lmasa yoki oflayn bo'lsa — davom etamiz
+    }
     try {
       await api('/auth/app/logout', { method: 'POST', query: { all_devices: allDevices } });
     } catch {

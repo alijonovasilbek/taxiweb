@@ -53,6 +53,7 @@ export async function clearSession(): Promise<void> {
 }
 
 export const getAccessToken = () => access;
+export const hasSession = () => !!refresh;
 
 /** null — tarmoq xatosi (sessiya saqlanadi), false — sessiya tugagan */
 async function doRefresh(): Promise<boolean | null> {
@@ -71,6 +72,11 @@ async function doRefresh(): Promise<boolean | null> {
   } catch {
     return null;
   }
+}
+
+/** Access tokenni majburan yangilash (masalan, socket eskirgan token bilan rad etilganda) */
+export function refreshSession(): Promise<boolean> {
+  return refreshOnce();
 }
 
 function refreshOnce(): Promise<boolean> {
@@ -147,6 +153,32 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   if (r.status === 401 && opts.auth !== false && refresh) {
     if (await refreshOnce()) r = await request(path, opts);
   }
+  if (r.status < 200 || r.status >= 300) throw new ApiError(r.status, message(r.data, r.status), r.data);
+  return r.data as T;
+}
+
+/** multipart/form-data yuklash (hujjat, rasm). Content-Type ni RN o'zi boundary bilan qo'yadi. */
+export async function upload<T = any>(path: string, form: FormData): Promise<T> {
+  const send = async () => {
+    const headers: Record<string, string> = { Accept: 'application/json', 'ngrok-skip-browser-warning': '1' };
+    if (access) headers.Authorization = `Bearer ${access}`;
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/api${path}`, { method: 'POST', headers, body: form });
+    } catch {
+      throw new ApiError(0, "Internet aloqasi yo'q yoki server javob bermadi");
+    }
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    return { status: res.status, data };
+  };
+  let r = await send();
+  if (r.status === 401 && refresh && (await refreshOnce())) r = await send();
   if (r.status < 200 || r.status >= 300) throw new ApiError(r.status, message(r.data, r.status), r.data);
   return r.data as T;
 }

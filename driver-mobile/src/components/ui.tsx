@@ -174,3 +174,19 @@ const s = StyleSheet.create({
   rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
+
+/** Ichki ekranlar uchun sarlavha: "‹ Orqaga" + nom */
+export function BackHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: 6 }}>
+      <Pressable onPress={onBack} hitSlop={12} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <View style={{ transform: [{ rotate: '180deg' }] }}>
+          <Icon n="next" size={20} color={t.primary} />
+        </View>
+        <Text style={{ color: t.primary, fontFamily: font.semibold, fontSize: 16 }}>Orqaga</Text>
+      </Pressable>
+      <T kind="title">{title}</T>
+    </View>
+  );
+}
