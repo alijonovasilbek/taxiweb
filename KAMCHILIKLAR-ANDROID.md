@@ -186,3 +186,42 @@ ilovaga o'zi qaytishi kerak. **Yechim:** backend'da `https://…/app/open` sahif
 | 5 | **3-bosqich (taksi)** — #4, #13, #14, #15 shu bosqich ichida | ~1,5 hafta |
 | 6 | **#5** doimiy server — haydovchilarga keng tarqatishdan oldin | alohida |
 | 7 | 🟡 bandlar — 6-bosqich (sifat) bilan birga | — |
+
+---
+
+## Tuzatish holati (2026-11-26, kechki sessiya)
+
+| # | Holat | Izoh |
+|---|---|---|
+| 1 | ✅ | CI har doim `assembleRelease` (JS ichida); sinov APK `android-dev` pre-release'da; faqat ARM ABI |
+| 2 | ✅ | nginx `realip` (ngrok `X-Forwarded-For`); jonli tekshirildi: Redis kalitida haqiqiy IP |
+| 3 | ✅ | 2 daqiqalik takroriy so'rov muhlati; test bilan |
+| 4 | 🟡 qisman | Taksi (onlayn, fon GPS, buyurtma oynasi, safar, baho), qatnovlar, so'rovlar va takliflar, transport + hujjatlar — **ilovada bor**. Push (ilova yopiq bo'lsa) — Firebase kaliti kerak |
+| 5 | ⏳ | Doimiy server (VPS, domen) — sizning qaroringiz |
+| 6 | ✅ | Botda raqam ulashish, raqam taksi yozuviga ham; onlayn bo'lish tasdiqlangan raqamsiz rad etiladi; ilovada eslatma |
+| 7 | ✅ | Chiqishda `queryClient.clear()` |
+| 8 | ✅ | Tokensiz `/devices/me` tokenni o'chirmaydi; test bilan |
+| 9 | ✅ | Har ochilishda `registerDevice()` |
+| 10 | ✅ | Sessiya yopilsa socket'lar uziladi (`session:{sid}` xonasi), ilova `session_revoked` ni ushlaydi |
+| 11 | ✅ | `connect_error` → refresh → qayta ulanish |
+| 12 | ✅ | Botda `/app`, `APP_DOWNLOAD_URL`, yangilanish banneri va o'rnatish ko'rsatmasi |
+| 13 | ✅ | Bo'limlar diskda keshlanadi; "Internet yo'q" banneri |
+| 14 | ✅ | "Har doim" (fon) ruxsati butunlay olib tashlandi — foreground service bilan kerak emas (expo-location manbasi tekshirildi); batareya uchun to'g'ridan-to'g'ri tizim oynasi; ruxsat yetishmasa bosh sahifada eslatma |
+| 15 | 🟡 | Bildirishnoma ishlovchisi, "orders" kanali, fondagi buyurtma uchun lokal bildirishnoma — bor. Qulflangan ekranda to'liq ekranli qo'ng'iroq (Notifee + FCM) — Firebase'dan keyin |
+| 16 | ⏳ | Imzo kaliti — sizdan (README'da buyruq) |
+| 17 | ✅ | `versionCode` tegdan: 1.2.3 → 10203 |
+| 18 | ⏳ | SMS orqali kirish — SMS provayder (Eskiz/Playmobile) kerak |
+| 19 | ✅ | Kod 5 daqiqa; CGNAT uchun limitlar oshirildi |
+| 20 | ✅ | Botda «📱 Ilovaga qaytish» → `/api/app/open` (Android intent) |
+| 21 | ✅ | `app/tasks.py` → `spawn()` |
+| 22 | ⏳ | Bitta jarayonda ishlaydi; ko'p worker uchun Redis pub/sub keyin |
+| 23 | ✅ | Yangi so'rovlar soni 60 s keshlanadi |
+| 24 | ⏳ | Hujjatlashtirildi (Redis o'chsa 1 soatgacha) |
+| 25 | ✅ | Soatda bir tozalash |
+| 26 | 🟡 | `SUPPORT_USERNAME` sozlamasi qo'shildi; haqiqiy manzilni siz tasdiqlashingiz kerak |
+| 27–29 | ⏳ | Rus tili, Sentry, ilova testlari — keyingi bosqich |
+| 30 | ✅ | `SystemUI.setBackgroundColorAsync` |
+| 31–33 | ⏳ | Kichik, keyinroq |
+
+Tekshiruvlar: backend 31/31 test, ilova `tsc` + `expo lint` + `expo-doctor` 20/20 + Android bundle.
+**Telefonda sinalmagan** — sinov APK'lari bot orqali yuborildi.
