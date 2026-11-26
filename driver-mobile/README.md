@@ -36,6 +36,12 @@ npx expo run:android          # Android SDK kerak; Expo Go'da fon GPS ishlamaydi
 Kompyuterda Android yig'ish og'ir bo'lsa — GitHub Actions (`.github/workflows/android.yml`): har bir push/PR'da
 debug APK artefakt bo'lib chiqadi, `v1.0.0` kabi tegda imzolangan release APK GitHub Release'ga yuklanadi.
 
+## Server manzili (API_URL)
+
+Manzil APK ichiga **yig'ish vaqtida** yoziladi. GitHub: Settings → Secrets and variables → Actions → **Variables** →
+`API_URL` = `https://...` (oxirida `/` siz). O'zgartirilgandan keyin APK'ni qayta yig'ish kerak
+(Actions → Android → Run workflow).
+
 ## Release imzo kaliti (bir marta)
 
 ```bash
