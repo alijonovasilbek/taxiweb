@@ -136,9 +136,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete android-dev --yes --cleanup-tag 2>/dev/null || true
+          # Eslatma: qo'shtirnoq ichidagi ${...} da apostrof bo'lmasin — bash sintaksisini buzadi
+          SERVER="${EXPO_PUBLIC_API_URL:-sozlanmagan}"
+          NOTES="Sinov APK: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, run #${{ github.run_number }}. Server: ${SERVER}"
           gh release create android-dev "$APK_PATH" --prerelease --target "$GITHUB_SHA" \
-            --title "Chortoq Ijrochi — sinov (${GITHUB_SHA::7})" \
-            --notes "Sinov APK'si: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, run #${{ github.run_number }}. Server: ${EXPO_PUBLIC_API_URL:-o'rnatilmagan}"
+            --title "Chortoq Ijrochi - sinov (${GITHUB_SHA::7})" --notes "$NOTES"
 
       - name: GitHub Release
         if: env.RELEASE == 'true'
