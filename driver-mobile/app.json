@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "Chortoq Ijrochi",
+    "slug": "chortoq-ijrochi",
+    "scheme": "chortoqijrochi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "android": {
+      "package": "uz.chortoq.ijrochi",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#7d1531",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.VIBRATE"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS"
+      ],
+      "softwareKeyboardLayoutMode": "resize",
+      "allowBackup": false,
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-system-ui",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "backgroundColor": "#7d1531",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#3d0816"
+          }
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/manrope/500Medium/Manrope_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/manrope/600SemiBold/Manrope_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf",
+            "./node_modules/@expo-google-fonts/manrope/800ExtraBold/Manrope_800ExtraBold.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "androidForegroundServiceIcon": "./assets/notification-icon.png"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#8c1c3a"
+        }
+      ]
+    ]
+  }
+}

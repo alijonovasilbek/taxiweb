@@ -1,0 +1,123 @@
+# Chortoq Ijrochi (driver-mobile) — Android APK yig'ish (PLAN-ANDROID §9)
+#
+#  • PR / push (driver-mobile o'zgarsa): typecheck + lint + debug APK → Actions artefakti
+#  • v* teg (masalan v1.0.0): imzolangan release APK → GitHub Release
+#
+# Repo sozlamalari (Settings → Secrets and variables → Actions):
+#   Variables: API_URL                      — backend manzili (https://..., oxirida / siz)
+#   Secrets:   ANDROID_KEYSTORE_BASE64      — release keystore (base64)
+#              KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+#              GOOGLE_SERVICES_JSON         — Firebase (3-bosqichdan)
+name: Android
+
+on:
+  pull_request:
+    paths: ["driver-mobile/**", ".github/workflows/android.yml"]
+  push:
+    branches: [main, android-app]
+    paths: ["driver-mobile/**", ".github/workflows/android.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # tegda GitHub Release yaratish uchun
+
+defaults:
+  run:
+    working-directory: driver-mobile
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_API_URL: ${{ vars.API_URL }}
+      APP_VERSION_CODE: ${{ github.run_number }}
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: driver-mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Versiya (tegdan)
+        if: env.RELEASE == 'true'
+        run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: API manzili tekshiruvi
+        run: |
+          if [ -z "$EXPO_PUBLIC_API_URL" ]; then
+            echo "::warning::API_URL repo o'zgaruvchisi o'rnatilmagan — ilova serverga ulana olmaydi"
+          fi
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+
+      - name: Firebase (bo'lsa)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then echo "$GOOGLE_SERVICES_JSON" > google-services.json; fi
+
+      - name: Native loyiha (CNG)
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Debug APK
+        if: env.RELEASE != 'true'
+        working-directory: driver-mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Release APK
+        if: env.RELEASE == 'true'
+        working-directory: driver-mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Release imzosi
+        if: env.RELEASE == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then echo "::error::ANDROID_KEYSTORE_BASE64 secret yo'q"; exit 1; fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          OUT="chortoq-ijrochi-${APP_VERSION}.apk"
+          "$APKSIGNER" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+            --out "$OUT" android/app/build/outputs/apk/release/app-release.apk
+          "$APKSIGNER" verify --print-certs "$OUT" | head -3
+          rm -f "$RUNNER_TEMP/release.jks"
+          echo "APK_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
+
+      - name: Debug APK yo'li
+        if: env.RELEASE != 'true'
+        run: echo "APK_PATH=driver-mobile/android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chortoq-ijrochi-${{ env.RELEASE == 'true' && 'release' || 'debug' }}-${{ github.run_number }}
+          path: ${{ env.APK_PATH }}
+          retention-days: 14
+
+      - name: GitHub Release
+        if: env.RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_PATH }}
+          generate_release_notes: true

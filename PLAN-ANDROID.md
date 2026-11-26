@@ -6,7 +6,7 @@
 > - Mijozlar **Telegram Mini App**da qoladi (o'zgarmaydi).
 > - APK **GitHub Actions**da yig'iladi (kompyuter xotirasi Android yig'ishga yetmaydi).
 >
-> **Holat (2026-11-26):** 0-bosqich (B0) va 1-bosqich (backend B1–B10) tayyor, testlar 29/29. Keyingisi — 2-bosqich (ilova asosi).
+> **Holat (2026-11-26):** 0, 1 va 2-bosqichlar tayyor (backend testlari 29/29, ilova asosi `driver-mobile/`). Keyingisi — 3-bosqich (taksi): Firebase va Yandex MapKit kaliti kerak.
 
 ---
 
@@ -223,7 +223,18 @@ begona buyurtma, baholar, atomar qabul qilish, bitta faol buyurtma, fon xizmati,
 | B9 | `GET /provider/home` | Bo'limlar (taxi/carpool/requests), faol ish, bugungi daromad, yangi so'rovlar, o'qilmagan bildirishnomalar |
 | B10 | `tests/test_mobile.py` (8 test) | Hammasi: 29/29 |
 
-Hech narsa commit qilinmagan.
+**2-bosqich — ilova asosi: ✅** (`driver-mobile/`, branch `android-app`)
+
+- Expo SDK 58 (RN 0.88) + TypeScript + Expo Router; paket `uz.chortoq.ijrochi`; ikonka va splash (bordo, oq «C»)
+- Telegram orqali kirish, tokenlarni xavfsiz saqlash (Keystore), 401 da avtomatik refresh, chiqish / barcha qurilmalardan chiqish
+- Ruxsatlar ustasi: joylashuv, fonda joylashuv, bildirishnoma kanallari, batareya; Xiaomi/Realme/Huawei/Samsung maslahatlari
+- Dinamik pastki menyu (`/provider/home` → bo'limlar), bosh sahifa, transportlar va hujjat holati, profil, kunduzgi/tungi mavzu
+- Majburiy yangilanish ekrani (`/app/version`), Socket.IO bilan real vaqt yangilanishi
+- `.github/workflows/android.yml`: typecheck + lint + debug APK; `v*` tegda imzolangan release APK → GitHub Release
+- Tekshirildi: `tsc`, `expo lint`, `expo-doctor` 20/20, Android JS bundle (Hermes) yig'iladi.
+  **Native APK hali yig'ilmagan** — GitHub'ga push qilingach Actions'da birinchi marta yig'iladi.
+- Taksi/Qatnovlar/So'rovlar bo'limlarida hozircha holat ko'rinadi; asosiy amallar 3–4-bosqichda.
+
 
 ---
 
