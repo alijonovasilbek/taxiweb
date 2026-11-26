@@ -25,7 +25,8 @@ async def create_order(conn: asyncpg.Connection, passenger_id: int, pickup: dict
         distance_km, duration_min, price, payment_method,
     )
     order = dict(row)
-    asyncio.create_task(_dispatch(conn, order))
+    from app.tasks import spawn
+    spawn(_dispatch(conn, order), name=f"dispatch:{order['id']}")
     return order
 
 
@@ -92,7 +93,8 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
             await sio.emit("new_order", payload, room=f"driver:{driver['id']}")
             if user_id:
                 push.fire(user_id, {"type": "new_order", **payload}, urgent=True, ttl=settings.offer_timeout_sec)
-            asyncio.create_task(_notify_driver_bot(driver, order_data))
+            from app.tasks import spawn
+            spawn(_notify_driver_bot(driver, order_data), name="notify_driver_bot")
             try:
                 await asyncio.wait_for(ev.wait(), settings.offer_timeout_sec)
             except asyncio.TimeoutError:

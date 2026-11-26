@@ -125,4 +125,5 @@ async def send_to_user(user_id: int, data: dict, *, title: str | None = None, bo
 
 def fire(user_id: int, data: dict, **kw) -> None:
     """Fon vazifasi sifatida yuborish (asosiy oqimni kutdirmaydi)."""
-    asyncio.create_task(send_to_user(user_id, data, **kw))
+    from app.tasks import spawn
+    spawn(send_to_user(user_id, data, **kw), name="push")

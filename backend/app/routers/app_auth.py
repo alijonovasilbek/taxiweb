@@ -28,7 +28,8 @@ class RefreshIn(BaseModel):
     refresh_token: str = Field(min_length=20, max_length=200)
 
 
-@router.post("/start", dependencies=[Depends(rate_limit("app-start", 10, 600))])
+# Mobil operatorlarda (CGNAT) yuzlab abonent bitta IP bilan chiqadi — limitlar shunga yarasha
+@router.post("/start", dependencies=[Depends(rate_limit("app-start", 30, 600))])
 async def start(body: StartIn, conn: asyncpg.Connection = Depends(get_db)):
     code = app_auth.new_login_code()
     await conn.execute("DELETE FROM app_login_codes WHERE expires_at < NOW() - INTERVAL '1 day'")
@@ -41,7 +42,7 @@ async def start(body: StartIn, conn: asyncpg.Connection = Depends(get_db)):
             "poll_interval": 2}
 
 
-@router.post("/poll", dependencies=[Depends(rate_limit("app-poll", 90, 60))])
+@router.post("/poll", dependencies=[Depends(rate_limit("app-poll", 600, 60))])
 async def poll(body: CodeIn, response: Response, conn: asyncpg.Connection = Depends(get_db)):
     """202 — hali tasdiqlanmagan; 200 — tokenlar; 410 — muddati o'tgan yoki rad etilgan."""
     h = app_auth.sha(body.code)

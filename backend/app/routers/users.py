@@ -57,10 +57,13 @@ def normalize_phone(raw: str) -> str:
 
 
 async def save_verified_phone(conn: asyncpg.Connection, telegram_id: int, phone: str):
-    return await conn.fetchrow(
+    row = await conn.fetchrow(
         "UPDATE users SET phone=$2, phone_verified=TRUE, updated_at=NOW() WHERE telegram_id=$1 RETURNING *",
         telegram_id, normalize_phone(phone),
     )
+    if row:  # taksi dispetcherligi yo'lovchiga shu raqamni ko'rsatadi
+        await conn.execute("UPDATE drivers SET phone=$2 WHERE telegram_id=$1", telegram_id, row["phone"])
+    return row
 
 
 @router.post("/me/phone", dependencies=[Depends(rate_limit("phone", 10, 300))])

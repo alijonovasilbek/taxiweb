@@ -13,7 +13,7 @@ import httpx
 
 from app import database
 from app.config import settings
-from app.services import push
+from app.services import app_auth, push
 from app.services.app_login_bot import answer_login, describe_login
 from tests.test_services_flow import (  # noqa: F401
     ADMIN_TG, CHORTOQ, TEST_TG_MAX, TEST_TG_MIN, client, h, login, loop, run,
@@ -93,10 +93,25 @@ def test_refresh_rotation_and_reuse_detection(client):
     assert r1.status_code == 200
     new = r1.json()
     assert new["refresh_token"] != tokens["refresh_token"]
-    # Eski (aylantirilgan) token qayta keldi → o'g'irlik deb sessiya yopiladi, yangi token ham ishlamaydi
-    assert run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": tokens["refresh_token"]})).status_code == 401
+    # Javob yo'qolgan (tunnel) — ilova eski token bilan qayta urinadi: muhlat ichida bu o'g'irlik emas (#3)
+    retry = run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": tokens["refresh_token"]}))
+    assert retry.status_code == 200
+    latest = retry.json()
+    # Yo'qolgan (hech kim olmagan) token endi yaroqsiz, eng oxirgisi ishlaydi
     assert run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": new["refresh_token"]})).status_code == 401
-    assert run(client.get("/api/users/me", headers=_bearer(new))).status_code == 401
+    assert run(client.get("/api/users/me", headers=_bearer(latest))).status_code == 200
+
+    # Muhlatdan keyin eski token keldi → o'g'irlik: sessiya yopiladi
+    tokens2, _ = _app_login(client)
+    fresh = run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": tokens2["refresh_token"]})).json()
+    async def age():
+        async with database.pool.acquire() as conn:
+            await conn.execute("UPDATE app_sessions SET last_used_at=NOW() - INTERVAL '10 minutes' WHERE refresh_hash=$1",
+                               app_auth.sha(fresh["refresh_token"]))
+    run(age())
+    assert run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": tokens2["refresh_token"]})).status_code == 401
+    assert run(client.post("/api/auth/app/refresh", headers=ip(), json={"refresh_token": fresh["refresh_token"]})).status_code == 401
+    assert run(client.get("/api/users/me", headers=_bearer(fresh))).status_code == 401
 
 
 def test_logout_and_block_revoke_immediately(client):
@@ -135,6 +150,12 @@ def test_device_registration_and_push(client):
         run(notify(uid, "test", "Salom", "Push sinovi", {"x": 1}, telegram=False))
         run(asyncio.sleep(0.2))
         assert any("fcm-good-token" in c and "Push sinovi" in c for c in calls)
+        # Tokensiz qayta ro'yxatdan o'tish (ilova har ochilishda) tokenni o'chirmaydi (#8)
+        run(client.put("/api/devices/me", headers=_bearer(tokens), json={"device_id": device, "app_version": "1.0.1"}))
+        async def tok():
+            async with database.pool.acquire() as conn:
+                return await conn.fetchval("SELECT fcm_token FROM devices WHERE device_id=$1", device)
+        assert run(tok()) == "fcm-good-token"
         # Eskirgan token bazadan o'chiriladi
         run(client.put("/api/devices/me", headers=_bearer(tokens), json={"device_id": device, "fcm_token": "dead-token"}))
         assert run(push.send_to_user(uid, {"type": "ping"})) == 0
@@ -228,3 +249,28 @@ def test_version_and_provider_home(client):
     run(_taxi_driver(me["id"], me["telegram_id"], FAR))
     body = run(client.get("/api/provider/home", headers=_bearer(tokens))).json()
     assert body["sections"] == ["taxi"] and body["taxi"]["is_online"] is True
+
+
+def test_going_online_requires_verified_phone(client):
+    """#6: yo'lovchi haydovchiga qo'ng'iroq qila olishi uchun onlayn bo'lishdan oldin tasdiqlangan raqam shart."""
+    tokens, _ = _app_login(client)
+    me = run(client.get("/api/users/me", headers=_bearer(tokens))).json()
+    run(_taxi_driver(me["id"], me["telegram_id"], FAR))
+    home = run(client.get("/api/provider/home", headers=_bearer(tokens))).json()
+    assert home["phone_required"] is True
+    r = run(client.put("/api/drivers/me/status", headers=_bearer(tokens), json={"is_online": True}))
+    assert r.status_code == 400 and "telefon" in r.json()["detail"].lower()
+    from app.routers.users import save_verified_phone
+    async def verify():
+        async with database.pool.acquire() as conn:
+            await save_verified_phone(conn, me["telegram_id"], "998901112233")
+            return await conn.fetchval("SELECT phone FROM drivers WHERE telegram_id=$1", me["telegram_id"])
+    assert run(verify()) == "+998901112233"  # taksi yozuviga ham tushdi
+    assert run(client.put("/api/drivers/me/status", headers=_bearer(tokens), json={"is_online": True})).status_code == 200
+    assert run(client.get("/api/provider/home", headers=_bearer(tokens))).json()["phone_required"] is False
+
+
+def test_open_app_page_and_download_link(client):
+    r = run(client.get("/api/app/open"))
+    assert r.status_code == 200 and "intent://login#Intent;scheme=chortoqijrochi" in r.text
+    assert "support" in run(client.get("/api/app/version")).json()

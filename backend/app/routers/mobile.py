@@ -38,14 +38,19 @@ async def register_device(body: DeviceIn, user=Depends(current_user), conn: asyn
         if body.fcm_token:  # token boshqa akkauntda qolib ketgan bo'lsa (telefon boshqaga o'tdi) — ko'chiramiz
             await conn.execute("UPDATE devices SET fcm_token=NULL WHERE fcm_token=$1 AND device_id<>$2",
                                body.fcm_token, body.device_id)
+        # Boshqa akkauntdan shu qurilmaga o'tilgan bo'lsa — eski egasining tokeni yangi egaga o'tmasin
+        await conn.execute("UPDATE devices SET fcm_token=NULL WHERE device_id=$1 AND user_id<>$2",
+                           body.device_id, user["id"])
         row = await conn.fetchrow(
             """INSERT INTO devices(user_id, device_id, fcm_token, platform, model, os_version, app_version)
                VALUES($1,$2,$3,$4,$5,$6,$7)
-               ON CONFLICT (device_id) DO UPDATE SET user_id=EXCLUDED.user_id, fcm_token=EXCLUDED.fcm_token,
+               ON CONFLICT (device_id) DO UPDATE SET user_id=EXCLUDED.user_id,
+                   fcm_token=CASE WHEN $8 THEN EXCLUDED.fcm_token ELSE devices.fcm_token END,
                    platform=EXCLUDED.platform, model=EXCLUDED.model, os_version=EXCLUDED.os_version,
                    app_version=EXCLUDED.app_version, updated_at=NOW()
                RETURNING id, device_id, platform, model, app_version, updated_at, (fcm_token IS NOT NULL) AS push""",
-            user["id"], body.device_id, body.fcm_token, body.platform, body.model, body.os_version, body.app_version,
+            user["id"], body.device_id, body.fcm_token or None, body.platform, body.model, body.os_version,
+            body.app_version, body.fcm_token is not None,
         )
     return dict(row)
 
@@ -97,7 +102,8 @@ def _ver(v: str) -> tuple[int, ...]:
 @router.get("/app/version")
 async def app_version(current: str | None = None):
     data = {"min_version": settings.app_min_version, "latest": settings.app_latest_version,
-            "apk_url": settings.app_apk_url or None, "changelog": settings.app_changelog or None}
+            "apk_url": download_url(), "changelog": settings.app_changelog or None,
+            "support": settings.support_username}
     if current:
         data["update_required"] = _ver(current) < _ver(settings.app_min_version)
         data["update_available"] = _ver(current) < _ver(settings.app_latest_version)
@@ -117,6 +123,48 @@ def _sections(categories: set[str], is_taxi: bool) -> list[str]:
     if services & {"cargo", "equipment"}:
         out.append("requests")
     return out
+
+
+async def _cached_feed_count(conn, uid: int) -> int:
+    """Lenta hisoblash og'ir — natija 60 soniya keshlanadi (bosh sahifa tez-tez yangilanadi). KAMCHILIKLAR-ANDROID #23"""
+    from app.redis_client import get_redis
+    from app.services import smart_match
+    r = get_redis()
+    key = f"feed_count:{uid}"
+    if r is not None:
+        try:
+            cached = await r.get(key)
+            if cached is not None:
+                return int(cached)
+        except Exception:
+            r = None
+    n = len(await smart_match.feed_for_provider(conn, uid))
+    if r is not None:
+        try:
+            await r.set(key, n, ex=60)
+        except Exception:
+            pass
+    return n
+
+
+def download_url() -> str | None:
+    return settings.app_download_url or settings.app_apk_url or None
+
+
+@router.get("/app/open", include_in_schema=False)
+async def open_app():
+    """Botdan ilovaga qaytish: Telegram inline tugmasi faqat https qabul qiladi — bu sahifa ilovani ochadi.
+    KAMCHILIKLAR-ANDROID.md #20"""
+    from fastapi.responses import HTMLResponse
+    intent = "intent://login#Intent;scheme=chortoqijrochi;package=uz.chortoq.ijrochi;end"
+    html = f"""<!doctype html><html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Chortoq Ijrochi</title>
+<style>body{{font-family:system-ui,sans-serif;background:#7d1531;color:#fff;display:flex;min-height:100vh;
+align-items:center;justify-content:center;margin:0;text-align:center}}a{{display:inline-block;margin-top:18px;
+background:#fff;color:#7d1531;padding:14px 22px;border-radius:14px;font-weight:700;text-decoration:none}}</style>
+</head><body><div><h2>✅ Kirish tasdiqlandi</h2><p>Chortoq Ijrochi ilovasiga qayting.</p>
+<a href="{intent}">Ilovani ochish</a></div><script>location.href="{intent}";</script></body></html>"""
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/provider/home")
@@ -158,11 +206,11 @@ async def provider_home(user=Depends(current_user), conn: asyncpg.Connection = D
            ORDER BY t.departure_at LIMIT 10""", uid)
     new_requests = 0
     if cats & {c for c, v in VEHICLE_CATEGORIES.items() if set(v["services"]) & {"cargo", "equipment"}}:
-        from app.services import smart_match
-        new_requests = len(await smart_match.feed_for_provider(conn, uid))
+        new_requests = await _cached_feed_count(conn, uid)
     unread = await conn.fetchval("SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND NOT is_read", uid)
 
     return {
+        "phone_required": not (user["phone"] and user.get("phone_verified")),
         "user": {"id": uid, "first_name": user["first_name"], "phone": user["phone"],
                  "phone_verified": user.get("phone_verified"), "roles": user["roles"],
                  "eligible_roles": sorted(await eligible_roles(conn, uid)),

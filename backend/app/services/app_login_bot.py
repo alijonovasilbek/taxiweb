@@ -66,3 +66,11 @@ async def answer_login(data: str, tg_user) -> str:
             await conn.execute("UPDATE app_login_codes SET status='approved', user_id=$2 WHERE code_hash=$1",
                                row["code_hash"], user["id"])
     return "✅ Kirish tasdiqlandi. <b>Chortoq Ijrochi</b> ilovasiga qayting."
+
+
+async def needs_phone(telegram_id: int) -> bool:
+    from app.database import pool
+    async with pool.acquire() as conn:
+        ok = await conn.fetchval(
+            "SELECT phone IS NOT NULL AND phone <> '' AND phone_verified FROM users WHERE telegram_id=$1", telegram_id)
+    return not ok

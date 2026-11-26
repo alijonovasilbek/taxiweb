@@ -57,11 +57,14 @@ class Settings(BaseSettings):
     bot_username: str = "chortoqgotaxibot"
     app_access_ttl_min: int = 60          # access token: 1 soat
     app_refresh_ttl_days: int = 60        # refresh token: 60 kun (har ishlatilganda aylanadi)
-    app_login_code_ttl_sec: int = 120
+    app_login_code_ttl_sec: int = 300    # Telegram'ni ochish + Start + tasdiqlash sekin internetda ham sig'sin
     app_min_version: str = "1.0.0"        # bundan eski ilova majburan yangilanadi
     app_latest_version: str = "1.0.0"
     app_apk_url: str = ""                 # GitHub Release'dagi oxirgi APK
     app_changelog: str = ""
+    # Botdagi /app va ilovaning majburiy yangilanishi uchun (bo'sh bo'lsa app_apk_url ishlatiladi)
+    app_download_url: str = ""
+    support_username: str = "taxigo_support"
     # Firebase Cloud Messaging (HTTP v1): service account JSON fayli yo'li yoki JSON matnining o'zi
     fcm_service_account: str = ""
     # Taksi: buyurtmani haydovchilarga ketma-ket taklif qilish

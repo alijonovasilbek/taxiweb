@@ -68,6 +68,11 @@ async def update_status(body: DriverStatusRequest, user=Depends(get_current_user
     driver = await get_driver_row(conn, user)
     if not driver or driver["status"] != "approved":
         raise HTTPException(403, "Not approved")
+    if body.is_online:
+        phone = await conn.fetchval(
+            "SELECT phone FROM users WHERE telegram_id=$1 AND phone_verified", driver["telegram_id"])
+        if not phone:
+            raise HTTPException(400, "Onlayn bo'lishdan oldin telefon raqamingizni tasdiqlang (botda «📱 Raqamni ulashish»)")
     await conn.execute("UPDATE drivers SET is_online=$2 WHERE id=$1", driver["id"], body.is_online)
     return {"is_online": body.is_online}
 

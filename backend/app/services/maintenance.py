@@ -10,6 +10,7 @@ import asyncio
 from app.log import log
 
 INTERVAL_SEC = 30
+CLEANUP_EVERY = 120  # ≈ soatda bir marta
 STALE_SEARCH = "3 minutes"  # ketma-ket takliflar: 6 haydovchi × 15 soniya + zaxira
 DRIVER_SILENCE = "90 seconds"
 
@@ -43,10 +44,25 @@ async def run_once() -> dict:
     return {"orders": len(stale), "drivers": len(silent)}
 
 
+async def cleanup() -> None:
+    """Yopilgan/eskirgan ilova sessiyalari va kirish kodlari (KAMCHILIKLAR-ANDROID.md #25)."""
+    from app.database import pool
+    async with pool.acquire() as conn:
+        s = await conn.execute(
+            """DELETE FROM app_sessions WHERE (revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '30 days')
+                                           OR expires_at < NOW() - INTERVAL '30 days'""")
+        c = await conn.execute("DELETE FROM app_login_codes WHERE expires_at < NOW() - INTERVAL '1 day'")
+    log.info(f"[maintenance] tozalash: sessiyalar {s}, kodlar {c}")
+
+
 async def loop() -> None:
+    n = 0
     while True:
         try:
             await run_once()
+            if n % CLEANUP_EVERY == 0:
+                await cleanup()
         except Exception as e:
             log.warning(f"[maintenance] xato: {e}")
+        n += 1
         await asyncio.sleep(INTERVAL_SEC)

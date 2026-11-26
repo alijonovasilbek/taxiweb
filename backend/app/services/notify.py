@@ -59,7 +59,8 @@ async def notify(
     push.fire(user_id, {"type": type_, "event": event or "", "link": link or "", **payload}, title=title, body=message)
 
     if telegram and tg_id:
-        asyncio.create_task(_send_telegram(tg_id, f"{title}\n\n{message}", link))
+        from app.tasks import spawn
+        spawn(_send_telegram(tg_id, f"{title}\n\n{message}", link), name="notify_telegram")
 
 
 async def _send_telegram(telegram_id: int, text: str, link: str | None) -> None:

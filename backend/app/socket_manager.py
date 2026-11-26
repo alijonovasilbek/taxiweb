@@ -31,6 +31,9 @@ async def connect(sid, environ, auth):
         if await session_revoked(payload["sid"]):
             return False
     await sio.save_session(sid, payload)
+    if payload.get("sid"):
+        # Ilova sessiyasi yopilsa (chiqish, bloklash) — shu xona orqali ulanishlar uziladi
+        await sio.enter_room(sid, f"session:{payload['sid']}")
 
     role = payload.get("role")
     if role == "driver":
@@ -59,6 +62,18 @@ async def connect(sid, environ, auth):
                 await sio.enter_room(sid, f"driver:{drv['id']}")
 
     log.info(f"[socket] connected {sid} role={role}")
+
+
+async def kick_sessions(session_ids: list[int]) -> None:
+    """Bekor qilingan ilova sessiyalarining ochiq socket ulanishlarini uzadi. KAMCHILIKLAR-ANDROID.md #10"""
+    for s_id in session_ids:
+        room = f"session:{s_id}"
+        try:
+            await sio.emit("session_revoked", {}, room=room)
+            for sock, _ in list(sio.manager.get_participants("/", room)):
+                await sio.disconnect(sock)
+        except Exception as e:  # pragma: no cover
+            log.warning(f"[socket] kick {s_id}: {e}")
 
 
 @sio.event

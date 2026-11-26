@@ -17,6 +17,9 @@ from app.auth import create_token
 from app.config import settings
 
 LOGIN_PREFIX = "login_"
+# Javob yo'lda yo'qolsa (tunnel, zaif signal) ilova eski refresh token bilan qayta urinadi.
+# Shu muddat ichida bu "o'g'irlik" emas, takroriy so'rov deb qabul qilinadi. KAMCHILIKLAR-ANDROID.md #3
+REUSE_GRACE_SEC = 120
 
 
 def sha(value: str) -> str:
@@ -67,12 +70,20 @@ async def rotate(conn: asyncpg.Connection, refresh: str) -> dict | None:
     async with conn.transaction():
         s = await conn.fetchrow(
             "SELECT * FROM app_sessions WHERE refresh_hash=$1 AND revoked_at IS NULL FOR UPDATE", h)
+        retry = False
         if not s:
-            # Avval ishlatilgan (aylantirilgan) token qayta keldi → kimdir nusxa olgan: sessiyani yopamiz
-            stolen = await conn.fetchval("SELECT id FROM app_sessions WHERE prev_hash=$1 AND revoked_at IS NULL", h)
-            if stolen:
-                await revoke(conn, "id=$1", stolen)
-            return None
+            s = await conn.fetchrow(
+                "SELECT * FROM app_sessions WHERE prev_hash=$1 AND revoked_at IS NULL FOR UPDATE", h)
+            if not s:
+                return None
+            fresh = await conn.fetchval(
+                "SELECT last_used_at > NOW() - make_interval(secs => $2) FROM app_sessions WHERE id=$1",
+                s["id"], REUSE_GRACE_SEC)
+            if not fresh:
+                # Eski token muhlatdan keyin keldi → kimdir nusxa olgan: sessiyani yopamiz
+                await revoke(conn, "id=$1", s["id"])
+                return None
+            retry = True  # javobi yo'qolgan so'rovning takrori
         if s["expires_at"] < datetime.now(timezone.utc):
             await revoke(conn, "id=$1", s["id"])
             return None
@@ -81,11 +92,18 @@ async def rotate(conn: asyncpg.Connection, refresh: str) -> dict | None:
             await revoke(conn, "id=$1", s["id"])
             return None
         new = secrets.token_urlsafe(48)
-        await conn.execute(
-            """UPDATE app_sessions SET prev_hash=refresh_hash, refresh_hash=$2, last_used_at=NOW(),
-                   expires_at=$3 WHERE id=$1""",
-            s["id"], sha(new), datetime.now(timezone.utc) + timedelta(days=settings.app_refresh_ttl_days),
-        )
+        expires = datetime.now(timezone.utc) + timedelta(days=settings.app_refresh_ttl_days)
+        if retry:
+            # prev_hash o'zgarmaydi: muhlat ichida yana takror kelsa ham ishlaydi; yo'qolgan token bekor bo'ladi.
+            # last_used_at yangilanmaydi — aks holda muhlat cheksiz uzayib ketardi
+            await conn.execute("UPDATE app_sessions SET refresh_hash=$2, expires_at=$3 WHERE id=$1",
+                               s["id"], sha(new), expires)
+        else:
+            await conn.execute(
+                """UPDATE app_sessions SET prev_hash=refresh_hash, refresh_hash=$2, last_used_at=NOW(),
+                       expires_at=$3 WHERE id=$1""",
+                s["id"], sha(new), expires,
+            )
     return _tokens(dict(user), s["id"], new)
 
 
@@ -94,6 +112,9 @@ async def revoke(conn: asyncpg.Connection, where: str, *args) -> int:
     rows = await conn.fetch(
         f"UPDATE app_sessions SET revoked_at=NOW() WHERE revoked_at IS NULL AND {where} RETURNING id", *args)
     if rows:
+        from app.socket_manager import kick_sessions
+        from app.tasks import spawn
+        spawn(kick_sessions([r["id"] for r in rows]), name="kick_sessions")
         from app.redis_client import get_redis
         r = get_redis()
         if r is not None:

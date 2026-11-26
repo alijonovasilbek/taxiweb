@@ -2,7 +2,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
 from aiogram.filters import CommandObject
 from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery,
-                           CallbackQuery)
+                           CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove)
 
 from app.config import settings
 from app.services import notification_service
@@ -32,11 +32,39 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
     @dp.callback_query(F.data.startswith("al:"))
     async def on_app_login(query: CallbackQuery):
-        from app.services.app_login_bot import answer_login
+        from app.services.app_login_bot import answer_login, needs_phone
         text = await answer_login(query.data, query.from_user)
         await query.answer()
+        ok = text.startswith("✅")
+        back = None
+        if ok and settings.passenger_app_url.startswith("https://"):
+            # Telegram inline tugmasi faqat https qabul qiladi — sahifa ilovani o'zi ochadi (KAMCHILIKLAR-ANDROID #20)
+            back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text="📱 Ilovaga qaytish", url=settings.passenger_app_url.rstrip("/") + "/api/app/open")]])
         if query.message:
-            await with_retry(lambda: query.message.edit_text(text, parse_mode="HTML"), label="app_login_answer")
+            await with_retry(lambda: query.message.edit_text(text, parse_mode="HTML", reply_markup=back),
+                             label="app_login_answer")
+        if ok and await needs_phone(query.from_user.id):
+            # Yo'lovchi haydovchiga qo'ng'iroq qila olishi uchun tasdiqlangan raqam shart (KAMCHILIKLAR-ANDROID #6)
+            kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📱 Raqamni ulashish", request_contact=True)]],
+                                     resize_keyboard=True, one_time_keyboard=True)
+            await with_retry(lambda: bot.send_message(
+                query.from_user.id,
+                "Ijrochi sifatida ishlash uchun telefon raqamingizni tasdiqlang — pastdagi tugmani bosing.",
+                reply_markup=kb), label="app_login_phone")
+
+    @dp.message(Command("app"))
+    async def cmd_app(message: Message):
+        """Chortoq Ijrochi (Android) APK havolasi."""
+        from app.routers.mobile import download_url
+        url = download_url()
+        text = ("📱 <b>Chortoq Ijrochi</b> — ijrochilar uchun Android ilova\n\n"
+                "Yuklab oling → faylni oching → «Noma'lum manbalardan o'rnatish»ga ruxsat bering → O'rnatish.\n"
+                "Kirish: ilovada «Telegram orqali kirish».")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬇️ Yuklab olish", url=url)]]) if url else None
+        if not url:
+            text += "\n\n⏳ Havola hali sozlanmagan. Administratorga murojaat qiling."
+        await with_retry(lambda: message.answer(text, parse_mode="HTML", reply_markup=kb), label="cmd_app")
 
     @dp.message(CommandStart())
     async def cmd_start(message: Message):
@@ -71,6 +99,7 @@ def create_bot() -> tuple[Bot, Dispatcher]:
             lambda: message.answer(
                 "Chortoq Services yordami:\n\n"
                 "/start - Botni boshlash\n"
+                "/app - Ijrochilar uchun Android ilova\n"
                 "/rides - Oxirgi buyurtmalar\n"
                 "/support - Yordam\n\n"
                 "Savollar: @taxigo_support"
@@ -98,7 +127,23 @@ def create_bot() -> tuple[Bot, Dispatcher]:
         async with pool.acquire() as conn:
             row = await save_verified_phone(conn, message.from_user.id, contact.phone_number)
         text = "Raqamingiz tasdiqlandi ✅" if row else "Avval Mini App'ni oching, so'ng raqamni ulashing."
-        await with_retry(lambda: message.answer(text), label="contact_saved")
+        await with_retry(lambda: message.answer(text, reply_markup=ReplyKeyboardRemove()), label="contact_saved")
+
+    @dp.message(F.text & ~F.text.startswith("/"))
+    async def admin_inbox(message: Message):
+        """Admin botga yozgan oddiy matn — ishlab chiquvchi (Claude Code) uchun "quti": Redis `admin_inbox` ro'yxati."""
+        if not message.from_user or message.from_user.id not in settings.admin_ids:
+            return
+        from datetime import datetime
+        import json
+        from app.redis_client import get_redis
+        r = get_redis()
+        if r is None:
+            return
+        await r.rpush("admin_inbox", json.dumps({"at": datetime.now().isoformat(timespec="seconds"),
+                                                  "text": message.text}, ensure_ascii=False))
+        await r.ltrim("admin_inbox", -200, -1)
+        await with_retry(lambda: message.answer("📥 Qabul qilindi."), label="admin_inbox")
 
     @dp.pre_checkout_query()
     async def pre_checkout(query: PreCheckoutQuery):
