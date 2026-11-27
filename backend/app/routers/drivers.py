@@ -134,5 +134,11 @@ async def upload_documents(
 
 @router.get("/nearby")
 async def get_nearby(lat: float = Query(...), lng: float = Query(...), user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
+    """Mijoz xaritasi uchun yaqin bo'sh mashinalar: faqat taxminiy joy (~10 m) va yetib kelish vaqti.
+    Ism, telefon, Telegram ID va mashina raqami oshkor qilinmaydi."""
     drivers = await find_nearest_drivers(conn, lat, lng, 3)
-    return drivers
+    cars = [{"lat": round(float(d["lat"]), 4), "lng": round(float(d["lng"]), 4),
+             "distance_km": round(float(d["distance_km"] or 0), 2)} for d in drivers if d.get("lat") is not None]
+    # Shahar ichida ~25 km/soat + 1 daqiqa (chiqib kelish)
+    eta = max(1, round(cars[0]["distance_km"] / 25 * 60) + 1) if cars else None
+    return {"cars": cars, "eta_min": eta}

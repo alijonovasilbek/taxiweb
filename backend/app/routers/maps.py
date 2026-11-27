@@ -93,13 +93,14 @@ async def estimate(body: RouteEstimateRequest, user=Depends(get_current_user), c
 _EMBED = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>html,body,#m{margin:0;padding:0;width:100%;height:100%;background:__BG__}
-.ymaps-2-1-79-copyright,.ymaps-2-1-79-gototech{transform:scale(.8);transform-origin:right bottom}</style>
-<script src="https://api-maps.yandex.ru/2.1/?lang=uz_UZ&apikey=__KEY__"></script></head>
+[class*="map-open-block"],[class*="gototech"]{display:none!important}
+[class*="copyright"]{transform:scale(.8);transform-origin:right bottom;opacity:.7}</style>
+<script src="https://api-maps.yandex.ru/2.1/?lang=uz_UZ&load=package.standard&apikey=__KEY__"></script></head>
 <body><div id="m"></div><script>
 var RN=window.ReactNativeWebView, map=null, marks={}, route=null, moving=false;
 function send(o){ try{ RN && RN.postMessage(JSON.stringify(o)); }catch(e){} }
 var PRESET={pickup:'islands#greenCircleDotIcon',dropoff:'islands#redCircleDotIcon',driver:'islands#blueAutoCircleIcon',
-  point:'islands#violetCircleDotIcon'};
+  car:'islands#blackAutoCircleIcon',point:'islands#violetCircleDotIcon'};
 window.csCmd=function(c){ if(!map) return;
   if(c.t==='center'){ c.animate===false ? map.setCenter([c.lat,c.lng], c.zoom||map.getZoom())
       : map.panTo([c.lat,c.lng],{duration:350}).then(function(){ if(c.zoom) map.setZoom(c.zoom,{duration:200}); }); }
@@ -114,7 +115,7 @@ window.csCmd=function(c){ if(!map) return;
   else if(c.t==='fit'){ var b=map.geoObjects.getBounds(); if(b) map.setBounds(b,{checkZoomRange:true,zoomMargin:[60,40,c.bottom||260,40],duration:300}); }
 };
 if(!window.ymaps){ send({t:'error'}); } else ymaps.ready(function(){
-  map=new ymaps.Map('m',{center:[__LAT__,__LNG__],zoom:14,controls:[]},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
+  map=new ymaps.Map('m',{center:[__LAT__,__LNG__],zoom:16,controls:[]},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
   map.events.add('actionbegin',function(){ if(!moving){ moving=true; send({t:'move'}); } });
   map.events.add('actionend',function(){ moving=false; var c=map.getCenter(); send({t:'center',lat:c[0],lng:c[1]}); });
   map.events.add('click',function(e){ var c=e.get('coords'); send({t:'click',lat:c[0],lng:c[1]}); });
@@ -129,4 +130,5 @@ async def embed(lat: float = 41.0694, lng: float = 71.8237, dark: bool = False):
     from app.config import settings
     html = (_EMBED.replace("__KEY__", settings.yandex_maps_api_key).replace("__LAT__", str(lat))
             .replace("__LNG__", str(lng)).replace("__BG__", "#1c1c1e" if dark else "#e9e6df"))
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    # Sahifa kichik va o'zgarmas — telefon keshlaydi, xarita keyingi ochilishda tezroq chiqadi
+    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=3600"})

@@ -9,6 +9,7 @@ async def find_nearest_drivers(conn: asyncpg.Connection, pickup_lat: float, pick
         """SELECT d.id, d.first_name, d.last_name, d.phone,
                   d.car_model, d.car_color, d.car_number, d.rating,
                   d.telegram_id,
+                  ST_Y(d.current_location::geometry) AS lat, ST_X(d.current_location::geometry) AS lng,
                   ST_Distance(
                       d.current_location::geography,
                       ST_MakePoint($2,$1)::geography

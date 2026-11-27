@@ -1,46 +1,59 @@
 /**
- * Taksi chaqirish: xaritada markaziy pin bilan "Qayerdan" → "Qayerga" (yoki qidiruv) → narx va to'lov → buyurtma.
- * Web App'dagi BookRide bilan bir xil backend: /maps/reverse-geocode, /maps/estimate, POST /orders.
+ * Taksi chaqirish — xarita markazida "olib ketish" pini (yaqin mashinalar va kelish vaqti bilan),
+ * pastda "Qayerga boramiz?" + Uy/Ish + oxirgi manzillar; manzil tanlangach marshrut, narx, to'lov va buyurtma.
+ * Backend Web App bilan bir xil: /maps/reverse-geocode, /drivers/nearby, /maps/estimate, POST /orders.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
-import { qk, type TaxiOrder } from '../api/hooks';
+import { qk, recentPlaces, useMe, useRides, type NearbyCars, type TaxiOrder } from '../api/hooks';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../components/MapView';
 import { PlaceSearch, type Place } from '../components/PlacePicker';
-import { Button, ErrorNote, Icon, money, T } from '../components/ui';
+import { ErrorNote, Icon, money, T } from '../components/ui';
 import { PAYMENT } from '../lib/format';
-import { font, radius, useTheme } from '../theme';
+import { font, useTheme } from '../theme';
 
 type Stage = 'pickup' | 'dropoff' | 'confirm';
 type Est = { distance_km: number; duration_min: number; price: number | null; polyline?: { lat: number; lng: number }[] };
+type Pay = 'cash' | 'payme' | 'click';
 
 export default function TaxiBook() {
   const t = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ to_lat?: string; to_lng?: string; to_address?: string }>();
+  const me = useMe();
+  const rides = useRides();
   const map = useRef<MapHandle>(null);
+
+  const preset = params.to_lat && params.to_lng
+    ? { lat: Number(params.to_lat), lng: Number(params.to_lng), address: params.to_address || 'Manzil' } : null;
   const [stage, setStage] = useState<Stage>('pickup');
   const [pickup, setPickup] = useState<Place | null>(null);
-  const [dropoff, setDropoff] = useState<Place | null>(null);
+  const [dropoff, setDropoff] = useState<Place | null>(preset);
   const [pin, setPin] = useState<{ p: LatLng; address: string | null; busy: boolean } | null>(null);
   const [moving, setMoving] = useState(false);
-  const [search, setSearch] = useState<Stage | null>(null);
+  const [search, setSearch] = useState<'pickup' | 'dropoff' | null>(null);
+  const [cars, setCars] = useState<NearbyCars | null>(null);
   const [est, setEst] = useState<Est | null>(null);
   const [estBusy, setEstBusy] = useState(false);
-  const [pay, setPay] = useState<'cash' | 'payme' | 'click'>('cash');
+  const [pay, setPay] = useState<Pay>('cash');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [here, setHere] = useState<LatLng | null>(null);
   const geoSeq = useRef(0);
+  const estSeq = useRef(0);
 
-  // Joriy joylashuv: ruxsat so'raladi; berilmasa — Chortoq markazi, manzil qidiruv orqali
+  const saved = me.data?.saved_places ?? {};
+  const recent = recentPlaces(rides.data, 4);
+
+  // Joriy joylashuv: avval oxirgi ma'lum (tez), keyin aniq
   useEffect(() => {
     (async () => {
       try {
@@ -50,16 +63,24 @@ export default function TaxiBook() {
         if (last) {
           const p = { lat: last.coords.latitude, lng: last.coords.longitude };
           setHere(p);
-          map.current?.center(p, 16, false);
+          map.current?.center(p, 17, false);
         }
         const cur = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const p = { lat: cur.coords.latitude, lng: cur.coords.longitude };
         setHere(p);
-        map.current?.center(p, 16);
+        if (!last) map.current?.center(p, 17);
       } catch {
-        // GPS o'chiq — foydalanuvchi xaritani surib yoki qidirib tanlaydi
+        // GPS o'chiq — xaritani surib yoki qidirib tanlanadi
       }
     })();
+  }, []);
+
+  const loadCars = useCallback(async (p: LatLng) => {
+    try {
+      setCars(await api<NearbyCars>('/drivers/nearby', { query: p }));
+    } catch {
+      setCars(null);
+    }
   }, []);
 
   const onCenter = useCallback(async (p: LatLng) => {
@@ -67,24 +88,24 @@ export default function TaxiBook() {
     if (stage === 'confirm') return;
     const my = ++geoSeq.current;
     setPin({ p, address: null, busy: true });
+    if (stage === 'pickup') void loadCars(p);
     try {
       const r = await api<{ address?: string | null; title?: string | null }>('/maps/reverse-geocode', { query: p });
       if (my === geoSeq.current) setPin({ p, address: r.title || r.address || null, busy: false });
     } catch {
       if (my === geoSeq.current) setPin({ p, address: null, busy: false });
     }
-  }, [stage]);
+  }, [stage, loadCars]);
 
   const pinAddress = pin?.address || (pin ? `${pin.p.lat.toFixed(5)}, ${pin.p.lng.toFixed(5)}` : '');
+  const currentPickup = (): Place | null => (pin && !pin.busy ? { ...pin.p, address: pinAddress } : pickup);
 
-  const estSeq = useRef(0);
-  // Narx va marshrut (manzillar tanlanganda)
   const estimate = async (a: Place, b: Place) => {
     const my = ++estSeq.current;
     setEst(null);
     setEstBusy(true);
     setError(null);
-    setTimeout(() => map.current?.fit(330), 400);
+    setTimeout(() => map.current?.fit(400), 350);
     try {
       const r = await api<Est>('/maps/estimate', {
         method: 'POST', body: { from_lat: a.lat, from_lng: a.lng, to_lat: b.lat, to_lng: b.lng },
@@ -97,25 +118,26 @@ export default function TaxiBook() {
     }
   };
 
-  const choose = (p: Place) => {
-    if (stage === 'pickup') {
-      setPickup(p);
-      // "Qayerga" oldin tanlangan bo'lsa (qaytib "Qayerdan"ni o'zgartirdi) — to'g'ridan-to'g'ri tasdiqlashga
-      if (dropoff) {
-        setStage('confirm');
-        void estimate(p, dropoff);
-      } else setStage('dropoff');
-    } else {
-      setDropoff(p);
-      setStage('confirm');
-      if (pickup) void estimate(pickup, p);
-    }
+  /** Manzil tanlandi: olib ketish joyi — xarita markazidagi pin (yoki qidiruvdan tanlangan) */
+  const goConfirm = (to: Place, from?: Place | null) => {
+    const a = from ?? currentPickup();
+    if (!a) return setError("Olib ketish joyini tanlang: xaritani suring yoki qidiring");
+    setPickup(a);
+    setDropoff(to);
+    setStage('confirm');
+    void estimate(a, to);
   };
 
-  const markers = useMemo<MapMarker[]>(() => [
-    ...(pickup && stage !== 'pickup' ? [{ id: 'pickup', type: 'pickup' as const, ...pickup }] : []),
-    ...(dropoff && stage === 'confirm' ? [{ id: 'dropoff', type: 'dropoff' as const, ...dropoff }] : []),
-  ], [pickup, dropoff, stage]);
+  const markers = useMemo<MapMarker[]>(() => {
+    const m: MapMarker[] = [];
+    if (stage !== 'pickup') {
+      if (pickup) m.push({ id: 'pickup', type: 'pickup', ...pickup });
+      if (dropoff && stage === 'confirm') m.push({ id: 'dropoff', type: 'dropoff', ...dropoff });
+    } else {
+      (cars?.cars ?? []).slice(0, 8).forEach((c, i) => m.push({ id: `car${i}`, type: 'car', lat: c.lat, lng: c.lng }));
+    }
+    return m;
+  }, [pickup, dropoff, stage, cars]);
 
   const route = useMemo<[number, number][] | null>(() => {
     if (stage !== 'confirm') return null;
@@ -125,13 +147,10 @@ export default function TaxiBook() {
 
   const back = () => {
     setError(null);
-    if (stage === 'confirm') {
-      setStage('dropoff');
-      setEst(null);
-      if (dropoff) map.current?.center(dropoff, 16);
-    } else if (stage === 'dropoff') {
+    if (stage === 'confirm' || stage === 'dropoff') {
       setStage('pickup');
-      if (pickup) map.current?.center(pickup, 16);
+      setEst(null);
+      if (pickup) map.current?.center(pickup, 17);
     } else router.back();
   };
 
@@ -156,18 +175,30 @@ export default function TaxiBook() {
     }
   };
 
-  const pinColor = stage === 'pickup' ? t.green : t.red;
+  const pinMode = stage === 'pickup' || stage === 'dropoff';
+  const pinColor = stage === 'pickup' ? t.primary : t.red;
+  const eta = cars?.eta_min;
+  const bubble = stage === 'pickup'
+    ? (moving ? null : eta ? `~${eta} daq` : cars ? "Yaqinda bo'sh mashina yo'q" : null)
+    : stage === 'dropoff' && !moving ? 'Shu yerga' : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <MapView ref={map} initial={here} markers={markers} route={route} onCenter={onCenter} onMoveStart={() => setMoving(true)} />
 
-      {stage !== 'confirm' ? (
+      {pinMode ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-          <View style={{ alignItems: 'center', transform: [{ translateY: moving ? -30 : -22 }] }}>
+          <View style={{ alignItems: 'center', transform: [{ translateY: moving ? -34 : -26 }] }}>
+            {bubble ? (
+              <View style={[s.bubble, { backgroundColor: t.text }]}>
+                {stage === 'pickup' && eta ? <Icon n="taxi" size={15} color={t.bg} /> : null}
+                <Text style={[s.bubbleText, { color: t.bg }]}>{bubble}</Text>
+              </View>
+            ) : null}
             <View style={[s.pinHead, { backgroundColor: pinColor }]}><View style={s.pinDot} /></View>
             <View style={[s.pinLeg, { backgroundColor: pinColor }]} />
           </View>
+          <View style={[s.pinShadow, moving && { opacity: 0.25, transform: [{ scale: 0.7 }] }]} />
         </View>
       ) : null}
 
@@ -175,63 +206,122 @@ export default function TaxiBook() {
         <Pressable onPress={back} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
           <Icon n="back" size={22} />
         </Pressable>
-        {here && stage !== 'confirm' ? (
-          <Pressable onPress={() => map.current?.center(here, 16)} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
-            <Icon n="locate" size={21} color={t.primary} />
+        {stage === 'pickup' ? (
+          <Pressable onPress={() => setSearch('pickup')} style={[s.addrPill, { backgroundColor: t.card }]}>
+            <View style={[s.dot, { backgroundColor: t.primary }]} />
+            {pin?.busy || moving ? <ActivityIndicator size="small" color={t.primary} /> : (
+              <Text numberOfLines={1} style={[s.addrPillText, { color: t.text }]}>{pinAddress || 'Olib ketish joyi'}</Text>
+            )}
+            <Icon n="chevDown" size={16} color={t.muted} />
           </Pressable>
-        ) : null}
+        ) : <View style={{ flex: 1 }} />}
+        <View style={{ width: 46 }} />
       </SafeAreaView>
 
-      <View style={[s.sheet, { backgroundColor: t.card, paddingBottom: 16 + insets.bottom }]}>
+      {here && pinMode ? (
+        <Pressable onPress={() => map.current?.center(here, 17)} style={[s.fab, s.locate, { backgroundColor: t.card, bottom: (stage === 'pickup' ? 330 : 190) + insets.bottom }]}>
+          <Icon n="nav" size={20} color={t.primary} />
+        </Pressable>
+      ) : null}
+
+      <View style={[s.sheet, { backgroundColor: t.sheet, paddingBottom: 14 + insets.bottom, shadowColor: t.shadow }]}>
+        <View style={[s.grabber, { backgroundColor: t.line }]} />
+
+        {stage === 'pickup' ? (
+          <View style={{ gap: 10 }}>
+            {dropoff ? (
+              <>
+                <Pressable onPress={() => setSearch('dropoff')} style={[s.where, { backgroundColor: t.fill }]}>
+                  <View style={[s.dot, { backgroundColor: t.red }]} />
+                  <Text numberOfLines={1} style={[s.whereText, { color: t.text }]}>{dropoff.address}</Text>
+                  <Icon n="search" size={18} color={t.muted} />
+                </Pressable>
+                <BigButton title="Davom etish" disabled={!pin || pin.busy || moving} onPress={() => goConfirm(dropoff)} />
+              </>
+            ) : (
+              <>
+                <Pressable onPress={() => setSearch('dropoff')} style={[s.where, { backgroundColor: t.fill }]}>
+                  <Icon n="search" size={20} color={t.text} />
+                  <Text style={[s.whereText, { color: t.text, fontFamily: font.bold }]}>Qayerga boramiz?</Text>
+                  <Icon n="next" size={20} color={t.muted} />
+                </Pressable>
+                <ScrollView style={{ maxHeight: 210 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  <PlaceRow icon="home" title="Uyga" subtitle={saved.home?.address ?? "Manzil qo'shish"}
+                    onPress={() => (saved.home ? goConfirm(saved.home) : router.push('/places'))} />
+                  <PlaceRow icon="briefcase" title="Ishga" subtitle={saved.work?.address ?? "Manzil qo'shish"}
+                    onPress={() => (saved.work ? goConfirm(saved.work) : router.push('/places'))} />
+                  {recent.map((p) => (
+                    <PlaceRow key={p.address} icon="history" title={p.address} onPress={() => goConfirm(p)} />
+                  ))}
+                  <PlaceRow icon="map" title="Xaritada ko'rsatish" subtitle="Borish joyini pin bilan tanlang" onPress={() => {
+                    const a = currentPickup();
+                    if (a) setPickup(a);
+                    setStage('dropoff');
+                  }} />
+                </ScrollView>
+              </>
+            )}
+            <ErrorNote error={error} />
+          </View>
+        ) : null}
+
+        {stage === 'dropoff' ? (
+          <View style={{ gap: 10 }}>
+            <T kind="label">Qayerga</T>
+            <Pressable onPress={() => setSearch('dropoff')} style={[s.where, { backgroundColor: t.fill }]}>
+              <View style={[s.dot, { backgroundColor: t.red }]} />
+              {pin?.busy || moving ? <ActivityIndicator size="small" color={t.primary} /> : (
+                <Text numberOfLines={1} style={[s.whereText, { color: t.text }]}>{pinAddress || 'Xaritani suring'}</Text>
+              )}
+              <Icon n="search" size={18} color={t.muted} />
+            </Pressable>
+            <BigButton title="Shu yerga" disabled={!pin || pin.busy || moving}
+              onPress={() => pin && goConfirm({ ...pin.p, address: pinAddress }, pickup)} />
+          </View>
+        ) : null}
+
         {stage === 'confirm' && pickup && dropoff ? (
           <View style={{ gap: 12 }}>
-            <RoutePoints from={pickup.address} to={dropoff.address} onFrom={() => { setStage('pickup'); map.current?.center(pickup, 16); }}
-              onTo={() => { setStage('dropoff'); map.current?.center(dropoff, 16); }} />
-            <View style={[s.price, { backgroundColor: t.primarySoft }]}>
+            <View style={[s.points, { backgroundColor: t.fill }]}>
+              <Pressable onPress={() => { setStage('pickup'); setEst(null); map.current?.center(pickup, 17); }} style={s.pointRow}>
+                <View style={[s.dot, { backgroundColor: t.primary }]} />
+                <Text numberOfLines={1} style={[s.pointText, { color: t.text }]}>{pickup.address}</Text>
+              </Pressable>
+              <View style={[s.pointLine, { backgroundColor: t.line }]} />
+              <Pressable onPress={() => setSearch('dropoff')} style={s.pointRow}>
+                <View style={[s.dot, { backgroundColor: t.red }]} />
+                <Text numberOfLines={1} style={[s.pointText, { color: t.text }]}>{dropoff.address}</Text>
+              </Pressable>
+            </View>
+
+            <View style={[s.tariff, { borderColor: t.primary, backgroundColor: t.primarySoft }]}>
+              <View style={[s.tariffIc, { backgroundColor: t.taxi }]}><Icon n="taxi" size={24} color="#141414" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.tariffName, { color: t.text }]}>Taksi</Text>
+                <Text style={[s.tariffSub, { color: t.muted }]}>
+                  {est ? `${Number(est.distance_km).toFixed(1)} km · ~${est.duration_min} daq` : 'Hisoblanmoqda…'}
+                  {eta ? ` · kelish ~${eta} daq` : ''}
+                </Text>
+              </View>
               {estBusy ? <ActivityIndicator color={t.primary} /> : (
-                <>
-                  <View>
-                    <T kind="small">Taxminiy narx</T>
-                    <T style={{ fontFamily: font.heavy, fontSize: 24, color: t.primary }}>{est?.price ? money(est.price) : '—'}</T>
-                  </View>
-                  {est ? <T kind="muted">{Number(est.distance_km).toFixed(1)} km · ~{est.duration_min} daq</T> : null}
-                </>
+                <Text style={[s.tariffPrice, { color: t.text }]}>{est?.price ? money(est.price) : '—'}</Text>
               )}
             </View>
+
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {(['cash', 'payme', 'click'] as const).map((m) => (
+              {(['cash', 'payme', 'click'] as Pay[]).map((m) => (
                 <Pressable key={m} onPress={() => setPay(m)}
-                  style={[s.pay, { borderColor: pay === m ? t.primary : t.line, backgroundColor: pay === m ? t.primarySoft : 'transparent' }]}>
-                  <Icon n={m === 'cash' ? 'cash' : 'card'} size={17} color={pay === m ? t.primary : t.muted} />
-                  <T style={{ fontFamily: font.semibold, color: pay === m ? t.primary : t.text }}>{PAYMENT[m]}</T>
+                  style={[s.pay, { borderColor: pay === m ? t.text : t.line, backgroundColor: pay === m ? t.fill : 'transparent' }]}>
+                  <Icon n={m === 'cash' ? 'cash' : 'card'} size={17} color={t.text} />
+                  <Text style={[s.payText, { color: t.text }]}>{PAYMENT[m]}</Text>
                 </Pressable>
               ))}
             </View>
             <ErrorNote error={error} />
-            <Button title="Taksi chaqirish" icon="taxi" loading={sending} disabled={estBusy || !est?.price} onPress={submit} />
+            <BigButton title={est?.price ? `Buyurtma berish · ${money(est.price)}` : 'Buyurtma berish'} loading={sending}
+              disabled={estBusy || !est?.price} onPress={submit} />
           </View>
-        ) : (
-          <View style={{ gap: 12 }}>
-            <T kind="label">{stage === 'pickup' ? 'Qayerdan' : 'Qayerga'}</T>
-            <Pressable onPress={() => setSearch(stage)} style={[s.addr, { backgroundColor: t.fill }]}>
-              <View style={[s.addrDot, { backgroundColor: pinColor }]} />
-              <View style={{ flex: 1 }}>
-                {pin?.busy ? <ActivityIndicator color={t.primary} style={{ alignSelf: 'flex-start' }} /> : (
-                  <T numberOfLines={2} style={{ fontFamily: font.semibold }}>{pinAddress || 'Xaritani suring yoki qidiring'}</T>
-                )}
-              </View>
-              <Icon n="search" size={19} color={t.muted} />
-            </Pressable>
-            {stage === 'dropoff' && pickup ? <T kind="small" numberOfLines={1}>Qayerdan: {pickup.address}</T> : null}
-            <ErrorNote error={error} />
-            <Button
-              title={stage === 'pickup' ? 'Shu yerdan' : 'Shu yerga'}
-              icon="check"
-              disabled={!pin || pin.busy || moving}
-              onPress={() => pin && choose({ ...pin.p, address: pinAddress })}
-            />
-          </View>
-        )}
+        ) : null}
       </View>
 
       {search ? (
@@ -240,8 +330,11 @@ export default function TaxiBook() {
           onClose={() => setSearch(null)}
           onPick={(p) => {
             setSearch(null);
-            choose(p);
-            if (stage === 'pickup') map.current?.center(p, 16);
+            if (search === 'pickup') {
+              setPickup(p);
+              map.current?.center(p, 17);
+              if (dropoff && stage === 'confirm') goConfirm(dropoff, p);
+            } else goConfirm(p, stage === 'confirm' ? pickup : null);
           }}
         />
       ) : null}
@@ -249,32 +342,67 @@ export default function TaxiBook() {
   );
 }
 
-function RoutePoints({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: () => void; onTo: () => void }) {
+function PlaceRow({ icon, title, subtitle, onPress }: { icon: string; title: string; subtitle?: string; onPress: () => void }) {
   const t = useTheme();
-  const row = (color: string, text: string, onPress: () => void) => (
-    <Pressable onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
-      <View style={[s.addrDot, { backgroundColor: color }]} />
-      <T numberOfLines={1} style={{ flex: 1, fontFamily: font.semibold }}>{text}</T>
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.6 }]}>
+      <View style={[s.rowIc, { backgroundColor: t.fill }]}><Icon n={icon} size={19} color={t.text} /></View>
+      <View style={{ flex: 1, gap: 1 }}>
+        <Text numberOfLines={1} style={[s.rowTitle, { color: t.text }]}>{title}</Text>
+        {subtitle ? <Text numberOfLines={1} style={[s.rowSub, { color: t.muted }]}>{subtitle}</Text> : null}
+      </View>
     </Pressable>
   );
+}
+
+function BigButton({ title, onPress, disabled, loading }: { title: string; onPress: () => void; disabled?: boolean; loading?: boolean }) {
+  const t = useTheme();
+  const off = disabled || loading;
   return (
-    <View style={{ borderRadius: radius.md, backgroundColor: t.fill, paddingHorizontal: 12, paddingVertical: 4 }}>
-      {row(t.green, from, onFrom)}
-      <View style={{ height: 1, backgroundColor: t.line, marginLeft: 22 }} />
-      {row(t.red, to, onTo)}
-    </View>
+    <Pressable onPress={off ? undefined : onPress}
+      style={({ pressed }) => [s.big, { backgroundColor: off ? t.fill : t.primary }, pressed && !off && { opacity: 0.85 }]}>
+      {loading ? <ActivityIndicator color="#fff" /> : (
+        <Text style={[s.bigText, { color: off ? t.faint : '#fff' }]}>{title}</Text>
+      )}
+    </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 12 },
-  fab: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 4, margin: 4 },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, elevation: 12 },
-  pinHead: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', elevation: 6 },
-  pinDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' },
-  pinLeg: { width: 4, height: 14, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
-  addr: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, padding: 14, minHeight: 56 },
-  addrDot: { width: 12, height: 12, borderRadius: 6 },
-  price: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.md, padding: 14, minHeight: 64 },
-  pay: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderRadius: 12, paddingVertical: 11 },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
+  fab: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  locate: { position: 'absolute', right: 14 },
+  addrPill: { flex: 1, height: 46, borderRadius: 23, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, elevation: 5 },
+  addrPillText: { flex: 1, fontFamily: font.bold, fontSize: 15 },
+  bubble: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 6, elevation: 6 },
+  bubbleText: { fontFamily: font.bold, fontSize: 14 },
+  pinHead: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', elevation: 6, borderWidth: 3, borderColor: '#fff' },
+  pinDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
+  pinLeg: { width: 4, height: 16, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
+  pinShadow: { width: 10, height: 4, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.3)', marginTop: -24 },
+  sheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 16, paddingTop: 8, elevation: 16, shadowOpacity: 1, shadowRadius: 20,
+  },
+  grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 12 },
+  where: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, paddingHorizontal: 16, height: 58 },
+  whereText: { flex: 1, fontFamily: font.semibold, fontSize: 17 },
+  dot: { width: 12, height: 12, borderRadius: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 },
+  rowIc: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  rowTitle: { fontFamily: font.semibold, fontSize: 16 },
+  rowSub: { fontFamily: font.medium, fontSize: 13 },
+  points: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 4 },
+  pointRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  pointText: { flex: 1, fontFamily: font.semibold, fontSize: 15 },
+  pointLine: { height: 1, marginLeft: 24 },
+  tariff: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 2, padding: 12 },
+  tariffIc: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  tariffName: { fontFamily: font.heavy, fontSize: 17 },
+  tariffSub: { fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  tariffPrice: { fontFamily: font.heavy, fontSize: 18 },
+  pay: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderRadius: 14, height: 46 },
+  payText: { fontFamily: font.semibold, fontSize: 14 },
+  big: { height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  bigText: { fontFamily: font.heavy, fontSize: 17 },
 });

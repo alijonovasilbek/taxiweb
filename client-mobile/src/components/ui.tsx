@@ -2,6 +2,7 @@ import {
   BriefcaseBusiness, Car, CarTaxiFront, Check, ChevronRight, Circle, ClipboardList, House, MapPin, Moon, Sun,
   Truck, UserRound, Users, Bell, BatteryCharging, ShieldCheck, LogOut, Smartphone, RefreshCw, Send, Construction,
   Phone, Star, X, Search, Navigation, Clock, Banknote, CreditCard, LocateFixed, ArrowLeft, Repeat, Plus, Download,
+  ArrowUpRight, Briefcase, History, ChevronDown, Map as MapIcon, Sparkles,
   type LucideIcon,
 } from 'lucide-react-native';
 import type { ReactNode } from 'react';
@@ -18,7 +19,8 @@ const ICONS: Record<string, LucideIcon> = {
   shield: ShieldCheck, logout: LogOut, phone: Smartphone, refresh: RefreshCw, send: Send, truck: Truck,
   work: BriefcaseBusiness, equipment: Construction, call: Phone, star: Star, close: X, search: Search,
   nav: Navigation, clock: Clock, cash: Banknote, card: CreditCard, locate: LocateFixed, back: ArrowLeft,
-  repeat: Repeat, plus: Plus, download: Download, orders: ClipboardList,
+  repeat: Repeat, plus: Plus, download: Download, orders: ClipboardList, arrowUR: ArrowUpRight, briefcase: Briefcase,
+  history: History, chevDown: ChevronDown, map: MapIcon, sparkles: Sparkles,
 };
 
 export type IconName = keyof typeof ICONS;
@@ -54,7 +56,8 @@ export function Screen({ children, scroll = true, edges = ['top'], padded = true
   children: ReactNode; scroll?: boolean; edges?: Edge[]; padded?: boolean; refresh?: ReactNode;
 }) {
   const t = useTheme();
-  const inner = padded ? { padding: 16, paddingBottom: 32, gap: 12 } : undefined;
+  // pastki joy: suzib turuvchi menyu ostida kontent qolib ketmasin
+  const inner = padded ? { padding: 16, paddingBottom: 120, gap: 12 } : undefined;
   return (
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: t.bg }}>
       {scroll ? (

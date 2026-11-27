@@ -106,3 +106,19 @@ def test_version_per_app(client):
     assert d["apk_url"] != c["apk_url"]
     page = run(client.get("/api/app/open", params={"app": "client"})).text
     assert "scheme=chortoq;package=uz.chortoq.app" in page
+
+
+def test_nearby_cars_hide_driver_identity(client):
+    tokens, _ = _login(client, "client")
+    me = run(client.get("/api/users/me", headers=_bearer(tokens))).json()
+    drv_tokens, _ = _login(client, "driver")
+    d_me = run(client.get("/api/users/me", headers=_bearer(drv_tokens))).json()
+    near = {"lat": CLI["lat"] + 0.2, "lng": CLI["lng"]}
+    run(_taxi_driver(d_me["id"], d_me["telegram_id"], near))
+    r = run(client.get("/api/drivers/nearby", params={"lat": near["lat"] + 0.001, "lng": near["lng"]}, headers=_bearer(tokens)))
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["cars"] and data["eta_min"] >= 1
+    assert set(data["cars"][0]) == {"lat", "lng", "distance_km"}
+    assert "+99890" not in r.text and str(d_me["telegram_id"]) not in r.text
+    assert me["id"]

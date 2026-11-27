@@ -31,7 +31,10 @@ export type Me = {
   phone_verified: boolean | null;
   rating: number | string | null;
   roles: string[];
+  saved_places?: { home?: SavedPlace; work?: SavedPlace };
 };
+
+export type SavedPlace = { address: string; lat: number; lng: number };
 
 export function useMe(enabled = true) {
   return useQuery({ queryKey: qk.me, queryFn: () => api<Me>('/users/me'), enabled, staleTime: 60_000 });
@@ -134,7 +137,21 @@ export function useRides() {
   return useQuery({ queryKey: qk.rides, queryFn: () => api<TaxiOrder[]>('/users/me/rides') });
 }
 
-export type Estimate = { distance_km: number; duration_min: number; price: number | null; route?: [number, number][] | null };
+/** Oxirgi borilgan manzillar (taksi tarixidan, takrorlarsiz) */
+export function recentPlaces(rides: TaxiOrder[] | undefined, limit = 4): SavedPlace[] {
+  const seen = new Set<string>();
+  const out: SavedPlace[] = [];
+  for (const o of rides ?? []) {
+    const key = (o.dropoff_address || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ address: o.dropoff_address, lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng) });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export type NearbyCars = { cars: { lat: number; lng: number; distance_km: number }[]; eta_min: number | null };
 
 // ── Po'puti ───────────────────────────────────────────────────────────────────
 export type Trip = {

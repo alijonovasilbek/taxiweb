@@ -16,7 +16,7 @@ type WebViewRef = { injectJavaScript: (js: string) => void };
 const WebView = RNWebView as unknown as ComponentType<Record<string, unknown> & { ref?: unknown }>;
 
 export type LatLng = { lat: number; lng: number };
-export type MapMarker = LatLng & { id: string; type: 'pickup' | 'dropoff' | 'driver' | 'point' };
+export type MapMarker = LatLng & { id: string; type: 'pickup' | 'dropoff' | 'driver' | 'car' | 'point' };
 
 export type MapHandle = {
   center: (p: LatLng, zoom?: number, animate?: boolean) => void;
@@ -42,10 +42,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   // Boshlang'ich URL bir marta hisoblanadi — markaz o'zgarsa sahifa qayta yuklanmasin
-  const [uri] = useState(() => {
-    const c = initial ?? DEFAULT_CENTER;
-    return `${API_URL}/api/maps/embed?lat=${c.lat}&lng=${c.lng}&dark=${isDark(t) ? 1 : 0}`;
-  });
+  const [uri] = useState(() => embedUrl(initial ?? DEFAULT_CENTER, isDark(t)));
 
   const send = useCallback((cmd: object) => {
     if (!ready.current) {
@@ -98,6 +95,10 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
         domStorageEnabled
         setSupportMultipleWindows={false}
         overScrollMode="never"
+        // Tezlik: GPU bilan chizish, HTTP kesh (sahifa va Yandex skriptlari qayta yuklanmaydi)
+        androidLayerType="hardware"
+        cacheEnabled
+        cacheMode="LOAD_DEFAULT"
         style={{ flex: 1, backgroundColor: t.bg }}
         onError={() => setFailed(true)}
         onHttpError={() => setFailed(true)}
@@ -110,3 +111,35 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
     </View>
   );
 });
+
+/** Markaz yaxlitlanadi — bir xil URL bo'lsa sahifa WebView keshidan olinadi */
+function embedUrl(c: LatLng, dark: boolean) {
+  return `${API_URL}/api/maps/embed?lat=${c.lat.toFixed(3)}&lng=${c.lng.toFixed(3)}&dark=${dark ? 1 : 0}`;
+}
+
+/**
+ * Ko'rinmas "isitish": bosh sahifa ochilgach Yandex xarita skriptlarini WebView keshiga yuklab qo'yadi,
+ * shunda "Taksi" ekranida xarita bir necha soniya tezroq chiqadi. Yuklangach o'zi yopiladi.
+ */
+export function MapWarmup() {
+  const [stage, setStage] = useState<'wait' | 'load' | 'done'>('wait');
+  useEffect(() => {
+    const id = setTimeout(() => setStage('load'), 1500);
+    return () => clearTimeout(id);
+  }, []);
+  if (stage !== 'load') return null;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', width: 2, height: 2, opacity: 0, left: -10, top: -10 }}>
+      <WebView
+        source={{ uri: embedUrl(DEFAULT_CENTER, false), headers: { 'ngrok-skip-browser-warning': '1' } }}
+        javaScriptEnabled
+        cacheEnabled
+        cacheMode="LOAD_DEFAULT"
+        onMessage={(e: WebViewMessageEvent) => {
+          if (e.nativeEvent.data.includes('"ready"') || e.nativeEvent.data.includes('"error"')) setStage('done');
+        }}
+        onError={() => setStage('done')}
+      />
+    </View>
+  );
+}
