@@ -40,7 +40,8 @@ def create_bot() -> tuple[Bot, Dispatcher]:
         if ok and settings.passenger_app_url.startswith("https://"):
             # Telegram inline tugmasi faqat https qabul qiladi — sahifa ilovani o'zi ochadi (KAMCHILIKLAR-ANDROID #20)
             back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                text="📱 Ilovaga qaytish", url=settings.passenger_app_url.rstrip("/") + "/api/app/open")]])
+                text="📱 Ilovaga qaytish",
+                url=settings.passenger_app_url.rstrip("/") + "/api/app/open" + ("?app=client" if "<b>Chortoq</b>" in text else ""))]])
         if query.message:
             await with_retry(lambda: query.message.edit_text(text, parse_mode="HTML", reply_markup=back),
                              label="app_login_answer")

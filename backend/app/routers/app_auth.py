@@ -17,6 +17,7 @@ DEVICE_ID = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_.:-]+$")
 class StartIn(BaseModel):
     device_id: str = DEVICE_ID
     device_name: str | None = Field(None, max_length=120)
+    app: str = Field("driver", pattern=r"^(driver|client)$")
 
 
 class CodeIn(BaseModel):
@@ -34,9 +35,9 @@ async def start(body: StartIn, conn: asyncpg.Connection = Depends(get_db)):
     code = app_auth.new_login_code()
     await conn.execute("DELETE FROM app_login_codes WHERE expires_at < NOW() - INTERVAL '1 day'")
     await conn.execute(
-        """INSERT INTO app_login_codes(code_hash, device_id, device_name, expires_at)
-           VALUES($1,$2,$3, NOW() + make_interval(secs => $4))""",
-        app_auth.sha(code), body.device_id, body.device_name, settings.app_login_code_ttl_sec,
+        """INSERT INTO app_login_codes(code_hash, device_id, device_name, expires_at, app)
+           VALUES($1,$2,$3, NOW() + make_interval(secs => $4), $5)""",
+        app_auth.sha(code), body.device_id, body.device_name, settings.app_login_code_ttl_sec, body.app,
     )
     return {"code": code, "bot_url": app_auth.bot_link(code), "expires_in": settings.app_login_code_ttl_sec,
             "poll_interval": 2}

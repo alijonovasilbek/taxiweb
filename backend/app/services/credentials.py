@@ -85,7 +85,7 @@ async def ensure_credentials(conn: asyncpg.Connection, telegram_id: int) -> tupl
 
 
 def credentials_text(login: str, password: str, first: bool = False) -> str:
-    head = ("🔑 <b>Chortoq Ijrochi</b> ilovasi uchun login va parolingiz.\n"
+    head = ("🔑 <b>Chortoq</b> va <b>Chortoq Ijrochi</b> ilovalari uchun login va parolingiz.\n"
             "Endi ilovaga Telegram'siz ham kira olasiz:\n\n") if first else "🔑 Yangi parol o'rnatildi:\n\n"
     return (head + f"Login: <code>{login}</code>\nParol: <code>{password}</code>\n\n"
             "Ilovada «Login va parol bilan kirish»ni tanlang.\n"

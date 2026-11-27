@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     app_changelog: str = ""
     # Botdagi /app va ilovaning majburiy yangilanishi uchun (bo'sh bo'lsa app_apk_url ishlatiladi)
     app_download_url: str = ""
+    # ── Mijozlar ilovasi "Chortoq" ──
+    client_app_min_version: str = "1.0.0"
+    client_app_latest_version: str = "1.0.0"
+    client_app_download_url: str = "https://github.com/alijonovasilbek/taxiweb/releases/download/android-dev/chortoq-dev.apk"
+    client_app_changelog: str = ""
     support_username: str = "taxigo_support"
     # Firebase Cloud Messaging (HTTP v1): service account JSON fayli yo'li yoki JSON matnining o'zi
     fcm_service_account: str = ""

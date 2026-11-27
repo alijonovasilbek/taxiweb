@@ -187,6 +187,8 @@ async def driver_arrived(sid, data):
         )
         if row:
             await sio.emit("driver_arrived", {"order_id": order_id}, room=f"passenger:{row['passenger_id']}")
+            from app.services import push
+            push.client_taxi(row["passenger_id"], "driver_arrived", order_id)
 
 
 @sio.on("driver:start_ride")
@@ -202,6 +204,8 @@ async def driver_start_ride(sid, data):
         )
         if row:
             await sio.emit("ride_started", {"order_id": order_id}, room=f"passenger:{row['passenger_id']}")
+            from app.services import push
+            push.client_taxi(row["passenger_id"], "ride_started", order_id)
 
 
 @sio.on("driver:complete_ride")

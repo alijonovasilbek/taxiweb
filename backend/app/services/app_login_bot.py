@@ -8,6 +8,7 @@ import html
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.services.app_auth import sha
+from app.services.apps import app_info
 
 PREFIX_LEN = 40  # callback_data ≤ 64 bayt: "al:y:" + xeshning 40 belgisi
 
@@ -32,7 +33,7 @@ async def describe_login(code: str) -> tuple[str, InlineKeyboardMarkup | None]:
         InlineKeyboardButton(text="✖️ Yo'q", callback_data=f"al:n:{h}"),
     ]])
     return (
-        f"📱 <b>Chortoq Ijrochi</b> ilovasiga kirish\n\nQurilma: <b>{device}</b>\n\n"
+        f"📱 <b>{html.escape(app_info(row['app']).get('name'))}</b> ilovasiga kirish\n\nQurilma: <b>{device}</b>\n\n"
         "Agar hozir ilovada «Telegram orqali kirish»ni o'zingiz bosgan bo'lsangiz — tasdiqlang.\n"
         "⚠️ Havolani boshqa odam yuborgan bo'lsa, <b>bosmang</b>: u sizning akkauntingizga kirib oladi.",
         kb,
@@ -65,7 +66,7 @@ async def answer_login(data: str, tg_user) -> str:
                 )
             await conn.execute("UPDATE app_login_codes SET status='approved', user_id=$2 WHERE code_hash=$1",
                                row["code_hash"], user["id"])
-    return "✅ Kirish tasdiqlandi. <b>Chortoq Ijrochi</b> ilovasiga qayting."
+    return f"✅ Kirish tasdiqlandi. <b>{app_info(row['app'])['name']}</b> ilovasiga qayting."
 
 
 async def needs_phone(telegram_id: int) -> bool:

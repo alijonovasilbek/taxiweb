@@ -1,4 +1,5 @@
-# Chortoq Ijrochi (driver-mobile) — Android APK yig'ish (PLAN-ANDROID §9)
+# Android APK yig'ish: "Chortoq Ijrochi" (driver-mobile) va mijozlar uchun "Chortoq" (client-mobile)
+# PLAN-ANDROID §9, PLAN-MIJOZ-ANDROID §8. Ikkala ilova parallel (matrix) yig'iladi.
 #
 #  • PR / push (driver-mobile o'zgarsa): typecheck + lint + SINOV APK
 #      - har doim release varianti: JS kodi APK ichida (debug varianti uni kompyuterdagi Metro'dan yuklaydi
@@ -15,10 +16,10 @@ name: Android
 
 on:
   pull_request:
-    paths: ["driver-mobile/**", ".github/workflows/android.yml"]
+    paths: ["driver-mobile/**", "client-mobile/**", ".github/workflows/android.yml"]
   push:
     branches: [main, android-app]
-    paths: ["driver-mobile/**", ".github/workflows/android.yml"]
+    paths: ["driver-mobile/**", "client-mobile/**", ".github/workflows/android.yml"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -29,14 +30,23 @@ concurrency:
 permissions:
   contents: write  # GitHub Release yaratish uchun
 
-defaults:
-  run:
-    working-directory: driver-mobile
-
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dir: driver-mobile
+            slug: chortoq-ijrochi
+            title: Chortoq Ijrochi
+          - dir: client-mobile
+            slug: chortoq
+            title: Chortoq
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
     env:
       EXPO_PUBLIC_API_URL: ${{ vars.API_URL }}
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -49,7 +59,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: driver-mobile/package-lock.json
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
 
       - uses: actions/setup-java@v5
         with:
@@ -91,16 +101,16 @@ jobs:
         run: npx expo prebuild --platform android --no-install --clean
 
       - name: Release APK
-        working-directory: driver-mobile/android
+        working-directory: ${{ matrix.dir }}/android
         run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures="$ABIS"
 
       - name: Sinov APK (debug kalit bilan)
         if: env.RELEASE != 'true'
         run: |
-          OUT="chortoq-ijrochi-dev.apk"
+          OUT="${{ matrix.slug }}-dev.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
           ls -la "$OUT"
-          echo "APK_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
+          echo "APK_PATH=${{ matrix.dir }}/$OUT" >> "$GITHUB_ENV"
 
       # Kompyuter emulyatorlari (BlueStacks, LDPlayer, Android Studio) uchun x86 APK.
       # ARM APK'ni ular tarjima qilib ham ocholmaydi (BlueStacks Nougat32: "undefined symbol: dl_unwind_find_exidx").
@@ -109,10 +119,10 @@ jobs:
         continue-on-error: true
         run: |
           (cd android && ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86,x86_64)
-          OUT="chortoq-ijrochi-emulator.apk"
+          OUT="${{ matrix.slug }}-emulator.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
           ls -la "$OUT"
-          echo "EMU_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
+          echo "EMU_PATH=${{ matrix.dir }}/$OUT" >> "$GITHUB_ENV"
 
       - name: Release imzosi
         if: env.RELEASE == 'true'
@@ -125,37 +135,42 @@ jobs:
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then echo "::error::ANDROID_KEYSTORE_BASE64 secret yo'q"; exit 1; fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          OUT="chortoq-ijrochi-${APP_VERSION}.apk"
+          OUT="${{ matrix.slug }}-${APP_VERSION}.apk"
           "$APKSIGNER" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KEYSTORE_PASSWORD \
             --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
             --out "$OUT" android/app/build/outputs/apk/release/app-release.apk
           "$APKSIGNER" verify --print-certs "$OUT" | head -3
           rm -f "$RUNNER_TEMP/release.jks"
-          echo "APK_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
+          echo "APK_PATH=${{ matrix.dir }}/$OUT" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: chortoq-ijrochi-${{ env.RELEASE == 'true' && 'release' || 'dev' }}-${{ github.run_number }}
+          name: ${{ matrix.slug }}-${{ env.RELEASE == 'true' && 'release' || 'dev' }}-${{ github.run_number }}
           path: |
             ${{ env.APK_PATH }}
             ${{ env.EMU_PATH }}
           retention-days: 14
 
-      # Sinov APK'si uchun doimiy ommaviy havola:
-      #   https://github.com/<repo>/releases/download/android-dev/chortoq-ijrochi-dev.apk
+      # Sinov APK'lari uchun doimiy ommaviy havolalar (ikkala ilova bitta pre-release'da):
+      #   https://github.com/<repo>/releases/download/android-dev/chortoq-ijrochi-dev.apk  (ijrochi)
+      #   https://github.com/<repo>/releases/download/android-dev/chortoq-dev.apk          (mijoz)
       - name: android-dev pre-release
         if: env.RELEASE != 'true' && github.event_name == 'push'
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete android-dev --yes --cleanup-tag 2>/dev/null || true
-          # Eslatma: qo'shtirnoq ichidagi ${...} da apostrof bo'lmasin — bash sintaksisini buzadi
           SERVER="${EXPO_PUBLIC_API_URL:-sozlanmagan}"
-          NOTES="Sinov APK: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, run #${{ github.run_number }}. Server: ${SERVER}"
+          NOTES="Sinov APK'lari: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, run #${{ github.run_number }}. Server: ${SERVER}"
+          # Ikkala job parallel: kim birinchi bo'lsa yaratadi, keyingisi faqat fayllarini almashtiradi
+          for i in 1 2 3; do
+            gh release view android-dev >/dev/null 2>&1 && break
+            gh release create android-dev --prerelease --target "$GITHUB_SHA"               --title "Chortoq ilovalari - sinov" --notes "$NOTES" && break
+            sleep 5
+          done
           # EMU_PATH bo'sh bo'lsa (emulyator build yiqilsa) faqat telefon APK'si yuklanadi
-          gh release create android-dev "$APK_PATH" ${EMU_PATH:+"$EMU_PATH"} --prerelease --target "$GITHUB_SHA" \
-            --title "Chortoq Ijrochi - sinov (${GITHUB_SHA::7})" --notes "$NOTES"
+          gh release upload android-dev "$APK_PATH" ${EMU_PATH:+"$EMU_PATH"} --clobber
+          gh release edit android-dev --notes "$NOTES" || true
 
       - name: GitHub Release
         if: env.RELEASE == 'true'

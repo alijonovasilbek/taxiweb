@@ -37,6 +37,8 @@ async def run_once() -> dict:
                WHERE status='offered' AND offered_at < NOW() - INTERVAL '2 minutes'""")
     for o in stale:
         await sio.emit("no_drivers_found", {"order_id": o["id"]}, room=f"passenger:{o['passenger_id']}")
+        from app.services import push
+        push.client_taxi(o["passenger_id"], "no_drivers_found", o["id"])
     for d in silent:
         await sio.emit("driver:offline_timeout", {"driver_id": d["id"]}, room=f"driver:{d['id']}")
     if stale or silent:

@@ -83,7 +83,7 @@ def _message(token: str, data: dict, title: str | None, body: str | None, urgent
 
 
 async def send_to_user(user_id: int, data: dict, *, title: str | None = None, body: str | None = None,
-                       urgent: bool = False, ttl: int = 3600) -> int:
+                       urgent: bool = False, ttl: int = 3600, app: str | None = None) -> int:
     """Foydalanuvchining barcha qurilmalariga. Nechta qurilmaga ketganini qaytaradi. Hech qachon xato otmaydi."""
     if not enabled():
         return 0
@@ -91,7 +91,8 @@ async def send_to_user(user_id: int, data: dict, *, title: str | None = None, bo
     try:
         async with pool.acquire() as conn:
             tokens = [r["fcm_token"] for r in await conn.fetch(
-                "SELECT fcm_token FROM devices WHERE user_id=$1 AND fcm_token IS NOT NULL", user_id)]
+                "SELECT fcm_token FROM devices WHERE user_id=$1 AND fcm_token IS NOT NULL AND ($2::text IS NULL OR app=$2)",
+                user_id, app)]
     except Exception as e:
         log.warning(f"[push] db: {e}")
         return 0
@@ -127,3 +128,23 @@ def fire(user_id: int, data: dict, **kw) -> None:
     """Fon vazifasi sifatida yuborish (asosiy oqimni kutdirmaydi)."""
     from app.tasks import spawn
     spawn(send_to_user(user_id, data, **kw), name="push")
+
+
+# ── Mijoz ilovasi ("Chortoq"): taksi holati push'lari ─────────────────────────
+CLIENT_TAXI = {
+    "order_accepted": ("🚕 Haydovchi topildi", "Haydovchi yo'lingizga chiqdi", True),
+    "driver_arrived": ("📍 Haydovchi yetib keldi", "Chiqishingiz mumkin", True),
+    "ride_started": ("🛣 Safar boshlandi", "Yo'lingiz bexatar bo'lsin", False),
+    "ride_completed": ("✅ Safar yakunlandi", "Haydovchini baholang", False),
+    "no_drivers_found": ("Haydovchi topilmadi", "Hozir yaqin atrofda bo'sh haydovchi yo'q. Qayta urinib ko'ring", False),
+    "order_cancelled": ("Buyurtma bekor qilindi", "Haydovchi buyurtmani bekor qildi", True),
+}
+
+
+def client_taxi(user_id: int | None, event: str, order_id: int, body: str | None = None) -> None:
+    """Yo'lovchining "Chortoq" ilovasiga (yopiq bo'lsa ham). Haydovchi ilovasiga bormaydi."""
+    if not user_id or event not in CLIENT_TAXI:
+        return
+    title, default_body, urgent = CLIENT_TAXI[event]
+    fire(user_id, {"type": event, "order_id": str(order_id), "link": f"/ride/{order_id}"},
+         title=title, body=body or default_body, urgent=urgent, app="client")

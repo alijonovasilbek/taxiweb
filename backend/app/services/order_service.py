@@ -92,7 +92,8 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
             payload = {**order_data, "distance_to_pickup_km": round(float(driver["distance_km"] or 0), 2)}
             await sio.emit("new_order", payload, room=f"driver:{driver['id']}")
             if user_id:
-                push.fire(user_id, {"type": "new_order", **payload}, urgent=True, ttl=settings.offer_timeout_sec)
+                push.fire(user_id, {"type": "new_order", **payload}, urgent=True, ttl=settings.offer_timeout_sec,
+                          app="driver")
             from app.tasks import spawn
             spawn(_notify_driver_bot(driver, order_data), name="notify_driver_bot")
             try:
@@ -111,6 +112,7 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
                 "UPDATE orders SET status='no_drivers' WHERE id=$1 AND status='searching' RETURNING id", order_id)
         if changed:
             await sio.emit("no_drivers_found", {"order_id": order_id}, room=f"passenger:{order['passenger_id']}")
+            push.client_taxi(order["passenger_id"], "no_drivers_found", order_id)
     finally:
         _offer_events.pop(order_id, None)
 
@@ -207,6 +209,9 @@ async def accept_order(conn: asyncpg.Connection, order_id: int, driver_id: int):
         room=f"passenger:{row['passenger_id']}",
     )
     await send_to_passenger(row["passenger_id"], f"Haydovchi {driver['first_name']} buyurtmangizni qabul qildi!")
+    from app.services import push
+    push.client_taxi(row["passenger_id"], "order_accepted", order_id,
+                     f"{driver['car_color']} {driver['car_model']} · {driver['car_number']} yo'lingizga chiqdi")
 
 
 async def complete_order(conn: asyncpg.Connection, order_id: int, driver_id: int):
@@ -233,6 +238,8 @@ async def complete_order(conn: asyncpg.Connection, order_id: int, driver_id: int
         {"order_id": order_id, "final_price": float(row["estimated_price"])},
         room=f"passenger:{row['passenger_id']}",
     )
+    from app.services import push
+    push.client_taxi(row["passenger_id"], "ride_completed", order_id)
     await sio.emit(
         "ride_completed",
         {"order_id": order_id, "final_price": float(row["estimated_price"])},

@@ -87,3 +87,46 @@ async def estimate(body: RouteEstimateRequest, user=Depends(get_current_user), c
     except ValueError:
         price = None
     return {**route, "price": price}
+
+
+# ── "Chortoq" ilovasi uchun xarita (WebView): kalit serverda qoladi, ilova faqat buyruq/hodisa almashadi ──
+_EMBED = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>html,body,#m{margin:0;padding:0;width:100%;height:100%;background:__BG__}
+.ymaps-2-1-79-copyright,.ymaps-2-1-79-gototech{transform:scale(.8);transform-origin:right bottom}</style>
+<script src="https://api-maps.yandex.ru/2.1/?lang=uz_UZ&apikey=__KEY__"></script></head>
+<body><div id="m"></div><script>
+var RN=window.ReactNativeWebView, map=null, marks={}, route=null, moving=false;
+function send(o){ try{ RN && RN.postMessage(JSON.stringify(o)); }catch(e){} }
+var PRESET={pickup:'islands#greenCircleDotIcon',dropoff:'islands#redCircleDotIcon',driver:'islands#blueAutoCircleIcon',
+  point:'islands#violetCircleDotIcon'};
+window.csCmd=function(c){ if(!map) return;
+  if(c.t==='center'){ c.animate===false ? map.setCenter([c.lat,c.lng], c.zoom||map.getZoom())
+      : map.panTo([c.lat,c.lng],{duration:350}).then(function(){ if(c.zoom) map.setZoom(c.zoom,{duration:200}); }); }
+  else if(c.t==='markers'){ var keep={};
+    (c.items||[]).forEach(function(m){ keep[m.id]=1;
+      if(marks[m.id]){ marks[m.id].geometry.setCoordinates([m.lat,m.lng]); }
+      else { marks[m.id]=new ymaps.Placemark([m.lat,m.lng],{},{preset:PRESET[m.type]||PRESET.point}); map.geoObjects.add(marks[m.id]); } });
+    Object.keys(marks).forEach(function(k){ if(!keep[k]){ map.geoObjects.remove(marks[k]); delete marks[k]; } }); }
+  else if(c.t==='route'){ if(route){ map.geoObjects.remove(route); route=null; }
+    if(c.points && c.points.length>1){ route=new ymaps.Polyline(c.points,{},{strokeColor:'#8c1c3a',strokeWidth:5,strokeOpacity:.85});
+      map.geoObjects.add(route); } }
+  else if(c.t==='fit'){ var b=map.geoObjects.getBounds(); if(b) map.setBounds(b,{checkZoomRange:true,zoomMargin:[60,40,c.bottom||260,40],duration:300}); }
+};
+if(!window.ymaps){ send({t:'error'}); } else ymaps.ready(function(){
+  map=new ymaps.Map('m',{center:[__LAT__,__LNG__],zoom:14,controls:[]},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
+  map.events.add('actionbegin',function(){ if(!moving){ moving=true; send({t:'move'}); } });
+  map.events.add('actionend',function(){ moving=false; var c=map.getCenter(); send({t:'center',lat:c[0],lng:c[1]}); });
+  map.events.add('click',function(e){ var c=e.get('coords'); send({t:'click',lat:c[0],lng:c[1]}); });
+  send({t:'ready'});
+});
+</script></body></html>"""
+
+
+@router.get("/embed", include_in_schema=False)
+async def embed(lat: float = 41.0694, lng: float = 71.8237, dark: bool = False):
+    from fastapi.responses import HTMLResponse
+    from app.config import settings
+    html = (_EMBED.replace("__KEY__", settings.yandex_maps_api_key).replace("__LAT__", str(lat))
+            .replace("__LNG__", str(lng)).replace("__BG__", "#1c1c1e" if dark else "#e9e6df"))
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})

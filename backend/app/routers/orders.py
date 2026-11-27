@@ -60,6 +60,7 @@ async def get_active(user=Depends(get_current_user), conn: asyncpg.Connection = 
             "SELECT * FROM orders WHERE passenger_id=$1 AND status NOT IN ('completed','cancelled','no_drivers') LIMIT 1",
             user["id"],
         )
+        return await _with_driver(conn, row) if row else None
     return dict(row) if row else None
 
 
@@ -90,7 +91,29 @@ async def get_by_id(order_id: int, user=Depends(get_current_user), conn: asyncpg
     driver_id = await _driver_id(conn, user)
     if row["passenger_id"] != user.get("id") and (not driver_id or row["driver_id"] != driver_id):
         raise HTTPException(404, "Order not found")  # boshqaning buyurtmasi borligini ham oshkor qilmaymiz
-    return dict(row)
+    return await _with_driver(conn, row)
+
+
+async def _with_driver(conn: asyncpg.Connection, row) -> dict:
+    """Yo'lovchi uchun: haydovchi va mashina ma'lumoti hamda faol safarda uning joylashuvi (ilova qayta ochilsa ham)."""
+    data = dict(row)
+    data.pop("pickup_location", None)
+    data.pop("dropoff_location", None)
+    data["driver"] = None
+    if row["driver_id"]:
+        d = await conn.fetchrow(
+            """SELECT first_name, last_name, phone, car_model, car_number, car_color, rating,
+                      ST_Y(current_location::geometry) AS lat, ST_X(current_location::geometry) AS lng
+               FROM drivers WHERE id=$1""", row["driver_id"])
+        if d:
+            active = row["status"] in ("accepted", "driver_arrived", "in_progress")
+            data["driver"] = {
+                "name": f"{d['first_name']} {d['last_name']}".strip(), "phone": d["phone"],
+                "car_model": d["car_model"], "car_number": d["car_number"], "car_color": d["car_color"],
+                "rating": float(d["rating"] or 5),
+                "lat": d["lat"] if active else None, "lng": d["lng"] if active else None,
+            }
+    return data
 
 
 @router.put("/{order_id}/accept")
@@ -125,6 +148,8 @@ async def arrived(order_id: int, user=Depends(get_current_user), conn: asyncpg.C
     )
     if row:
         await sio.emit("driver_arrived", {"order_id": order_id}, room=f"passenger:{row['passenger_id']}")
+        from app.services import push
+        push.client_taxi(row["passenger_id"], "driver_arrived", order_id)
     return {"success": True}
 
 
@@ -139,6 +164,8 @@ async def start_ride(order_id: int, user=Depends(get_current_user), conn: asyncp
     )
     if row:
         await sio.emit("ride_started", {"order_id": order_id}, room=f"passenger:{row['passenger_id']}")
+        from app.services import push
+        push.client_taxi(row["passenger_id"], "ride_started", order_id)
     return {"success": True}
 
 
@@ -194,6 +221,8 @@ async def cancel(order_id: int, body: CancelOrderRequest, as_driver: bool = Fals
                 push.fire(uid, {"type": "order_cancelled", "order_id": order_id, "reason": reason},
                           title="Buyurtma bekor qilindi", body=reason)
 
+    if cancelled_by == "driver":
+        push.client_taxi(row["passenger_id"], "order_cancelled", order_id, reason or None)
     target_room = f"passenger:{row['passenger_id']}" if cancelled_by == "driver" else (f"driver:{row['driver_id']}" if row["driver_id"] else None)
     if target_room:
         await sio.emit(

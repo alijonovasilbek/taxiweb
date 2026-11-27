@@ -30,6 +30,7 @@ class DeviceIn(BaseModel):
     model: str | None = Field(None, max_length=120)
     os_version: str | None = Field(None, max_length=40)
     app_version: str | None = Field(None, max_length=40)
+    app: str = Field("driver", pattern=r"^(driver|client)$")
 
 
 @router.put("/devices/me")
@@ -42,15 +43,15 @@ async def register_device(body: DeviceIn, user=Depends(current_user), conn: asyn
         await conn.execute("UPDATE devices SET fcm_token=NULL WHERE device_id=$1 AND user_id<>$2",
                            body.device_id, user["id"])
         row = await conn.fetchrow(
-            """INSERT INTO devices(user_id, device_id, fcm_token, platform, model, os_version, app_version)
-               VALUES($1,$2,$3,$4,$5,$6,$7)
+            """INSERT INTO devices(user_id, device_id, fcm_token, platform, model, os_version, app_version, app)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$9)
                ON CONFLICT (device_id) DO UPDATE SET user_id=EXCLUDED.user_id,
                    fcm_token=CASE WHEN $8 THEN EXCLUDED.fcm_token ELSE devices.fcm_token END,
                    platform=EXCLUDED.platform, model=EXCLUDED.model, os_version=EXCLUDED.os_version,
-                   app_version=EXCLUDED.app_version, updated_at=NOW()
-               RETURNING id, device_id, platform, model, app_version, updated_at, (fcm_token IS NOT NULL) AS push""",
+                   app_version=EXCLUDED.app_version, app=EXCLUDED.app, updated_at=NOW()
+               RETURNING id, device_id, platform, model, app_version, app, updated_at, (fcm_token IS NOT NULL) AS push""",
             user["id"], body.device_id, body.fcm_token or None, body.platform, body.model, body.os_version,
-            body.app_version, body.fcm_token is not None,
+            body.app_version, body.fcm_token is not None, body.app,
         )
     return dict(row)
 
@@ -117,13 +118,20 @@ def _ver(v: str) -> tuple[int, ...]:
 
 
 @router.get("/app/version")
-async def app_version(current: str | None = None):
-    data = {"min_version": settings.app_min_version, "latest": settings.app_latest_version,
-            "apk_url": download_url(), "changelog": settings.app_changelog or None,
-            "support": settings.support_username}
+async def app_version(current: str | None = None, app: str = "driver"):
+    if app == "client":
+        data = {"min_version": settings.client_app_min_version, "latest": settings.client_app_latest_version,
+                "apk_url": settings.client_app_download_url or None, "changelog": settings.client_app_changelog or None,
+                "support": settings.support_username}
+        lo, hi = settings.client_app_min_version, settings.client_app_latest_version
+    else:
+        data = {"min_version": settings.app_min_version, "latest": settings.app_latest_version,
+                "apk_url": download_url(), "changelog": settings.app_changelog or None,
+                "support": settings.support_username}
+        lo, hi = settings.app_min_version, settings.app_latest_version
     if current:
-        data["update_required"] = _ver(current) < _ver(settings.app_min_version)
-        data["update_available"] = _ver(current) < _ver(settings.app_latest_version)
+        data["update_required"] = _ver(current) < _ver(lo)
+        data["update_available"] = _ver(current) < _ver(hi)
     return data
 
 
@@ -169,17 +177,20 @@ def download_url() -> str | None:
 
 
 @router.get("/app/open", include_in_schema=False)
-async def open_app():
+async def open_app(app: str = "driver"):
     """Botdan ilovaga qaytish: Telegram inline tugmasi faqat https qabul qiladi — bu sahifa ilovani ochadi.
     KAMCHILIKLAR-ANDROID.md #20"""
     from fastapi.responses import HTMLResponse
-    intent = "intent://login#Intent;scheme=chortoqijrochi;package=uz.chortoq.ijrochi;end"
+    from app.services.apps import app_info
+    a = app_info(app)
+    name = a["name"]
+    intent = f"intent://login#Intent;scheme={a['scheme']};package={a['package']};end"
     html = f"""<!doctype html><html lang="uz"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Chortoq Ijrochi</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{name}</title>
 <style>body{{font-family:system-ui,sans-serif;background:#7d1531;color:#fff;display:flex;min-height:100vh;
 align-items:center;justify-content:center;margin:0;text-align:center}}a{{display:inline-block;margin-top:18px;
 background:#fff;color:#7d1531;padding:14px 22px;border-radius:14px;font-weight:700;text-decoration:none}}</style>
-</head><body><div><h2>✅ Kirish tasdiqlandi</h2><p>Chortoq Ijrochi ilovasiga qayting.</p>
+</head><body><div><h2>✅ Kirish tasdiqlandi</h2><p>{name} ilovasiga qayting.</p>
 <a href="{intent}">Ilovani ochish</a></div><script>location.href="{intent}";</script></body></html>"""
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
