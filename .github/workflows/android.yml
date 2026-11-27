@@ -102,6 +102,18 @@ jobs:
           ls -la "$OUT"
           echo "APK_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
 
+      # Kompyuter emulyatorlari (BlueStacks, LDPlayer, Android Studio) uchun x86 APK.
+      # ARM APK'ni ular tarjima qilib ham ocholmaydi (BlueStacks Nougat32: "undefined symbol: dl_unwind_find_exidx").
+      - name: Emulyator APK (x86, x86_64)
+        if: env.RELEASE != 'true'
+        continue-on-error: true
+        run: |
+          (cd android && ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86,x86_64)
+          OUT="chortoq-ijrochi-emulator.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
+          ls -la "$OUT"
+          echo "EMU_PATH=driver-mobile/$OUT" >> "$GITHUB_ENV"
+
       - name: Release imzosi
         if: env.RELEASE == 'true'
         env:
@@ -124,7 +136,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: chortoq-ijrochi-${{ env.RELEASE == 'true' && 'release' || 'dev' }}-${{ github.run_number }}
-          path: ${{ env.APK_PATH }}
+          path: |
+            ${{ env.APK_PATH }}
+            ${{ env.EMU_PATH }}
           retention-days: 14
 
       # Sinov APK'si uchun doimiy ommaviy havola:
@@ -139,7 +153,8 @@ jobs:
           # Eslatma: qo'shtirnoq ichidagi ${...} da apostrof bo'lmasin — bash sintaksisini buzadi
           SERVER="${EXPO_PUBLIC_API_URL:-sozlanmagan}"
           NOTES="Sinov APK: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}, run #${{ github.run_number }}. Server: ${SERVER}"
-          gh release create android-dev "$APK_PATH" --prerelease --target "$GITHUB_SHA" \
+          # EMU_PATH bo'sh bo'lsa (emulyator build yiqilsa) faqat telefon APK'si yuklanadi
+          gh release create android-dev "$APK_PATH" ${EMU_PATH:+"$EMU_PATH"} --prerelease --target "$GITHUB_SHA" \
             --title "Chortoq Ijrochi - sinov (${GITHUB_SHA::7})" --notes "$NOTES"
 
       - name: GitHub Release
