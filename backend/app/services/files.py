@@ -70,6 +70,17 @@ async def save_private_document(file: UploadFile, prefix: str) -> str:
     return PRIVATE_PREFIX + fname
 
 
+def delete_private_document(file_url: str | None) -> None:
+    """Yopiq hujjat faylini o'chiradi (faqat private:<nom>, papkadan tashqariga chiqib bo'lmaydi)."""
+    if not file_url or not file_url.startswith(PRIVATE_PREFIX):
+        return
+    name = os.path.basename(file_url[len(PRIVATE_PREFIX):])
+    try:
+        os.remove(os.path.join(private_dir(), name))
+    except OSError:
+        pass
+
+
 def _sig(doc_id: int, exp: int) -> str:
     key = (settings.jwt_secret + ":files").encode()
     return hmac.new(key, f"{doc_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]

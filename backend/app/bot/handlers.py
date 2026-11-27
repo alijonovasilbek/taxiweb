@@ -44,6 +44,14 @@ def create_bot() -> tuple[Bot, Dispatcher]:
         if query.message:
             await with_retry(lambda: query.message.edit_text(text, parse_mode="HTML", reply_markup=back),
                              label="app_login_answer")
+        if ok:
+            # Birinchi kirish: login/parol — keyin Telegram'siz ham kirish mumkin
+            from app.database import pool
+            from app.services.credentials import ensure_credentials, send_credentials
+            async with pool.acquire() as conn:
+                creds = await ensure_credentials(conn, query.from_user.id)
+            if creds:
+                await send_credentials(query.from_user.id, *creds, first=True)
         if ok and await needs_phone(query.from_user.id):
             # Yo'lovchi haydovchiga qo'ng'iroq qila olishi uchun tasdiqlangan raqam shart (KAMCHILIKLAR-ANDROID #6)
             kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📱 Raqamni ulashish", request_contact=True)]],
@@ -52,6 +60,21 @@ def create_bot() -> tuple[Bot, Dispatcher]:
                 query.from_user.id,
                 "Ijrochi sifatida ishlash uchun telefon raqamingizni tasdiqlang — pastdagi tugmani bosing.",
                 reply_markup=kb), label="app_login_phone")
+
+    @dp.message(Command("parol"))
+    async def cmd_password(message: Message):
+        """Ilova uchun yangi parol (eskisi bekor bo'ladi). Ochiq ilova sessiyalari yopilmaydi."""
+        from app.database import pool
+        from app.services.credentials import set_credentials, send_credentials
+        async with pool.acquire() as conn:
+            uid = await conn.fetchval("SELECT id FROM users WHERE telegram_id=$1 AND NOT is_blocked",
+                                      message.from_user.id)
+            creds = await set_credentials(conn, uid) if uid else None
+        if not creds:
+            await with_retry(lambda: message.answer("Avval Mini App yoki ilova orqali ro'yxatdan o'ting."),
+                             label="cmd_password")
+            return
+        await send_credentials(message.from_user.id, *creds)
 
     @dp.message(Command("app"))
     async def cmd_app(message: Message):
@@ -100,6 +123,7 @@ def create_bot() -> tuple[Bot, Dispatcher]:
                 "Chortoq Services yordami:\n\n"
                 "/start - Botni boshlash\n"
                 "/app - Ijrochilar uchun Android ilova\n"
+                "/parol - Ilova uchun login va yangi parol\n"
                 "/rides - Oxirgi buyurtmalar\n"
                 "/support - Yordam\n\n"
                 "Savollar: @taxigo_support"

@@ -3,11 +3,11 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from app.auth import get_current_user
+from app.auth import get_current_user, verify_password
 from app.config import settings
 from app.database import get_db
 from app.security import rate_limit
-from app.services import app_auth
+from app.services import app_auth, credentials
 
 router = APIRouter(prefix="/auth/app", tags=["mobile-auth"])
 
@@ -67,6 +67,61 @@ async def poll(body: CodeIn, response: Response, conn: asyncpg.Connection = Depe
         if not user or user["is_blocked"]:
             raise HTTPException(403, "Hisobingiz bloklangan")
         return await app_auth.create_session(conn, dict(user), row["device_id"], row["device_name"])
+
+
+class PasswordLoginIn(BaseModel):
+    login: str = Field(min_length=3, max_length=40)
+    password: str = Field(min_length=1, max_length=100)
+    device_id: str = DEVICE_ID
+    device_name: str | None = Field(None, max_length=120)
+
+
+class PasswordChangeIn(BaseModel):
+    old_password: str = Field(min_length=1, max_length=100)
+    new_password: str = Field(min_length=credentials.MIN_PASSWORD, max_length=100)
+
+
+# Bitta login uchun noto'g'ri urinishlar chegarasi (IP limitidan tashqari — parolni terib topishga qarshi)
+FAIL_LIMIT, FAIL_WINDOW = 8, 900
+
+
+@router.post("/password", dependencies=[Depends(rate_limit("app-pw", 30, 600))])
+async def password_login(body: PasswordLoginIn, conn: asyncpg.Connection = Depends(get_db)):
+    """Login/parol bilan kirish. Login va parolni bot birinchi Telegram kirishida yuboradi (/parol — yangisi)."""
+    from app.redis_client import get_redis
+    r = get_redis()
+    key = f"pwfail:{credentials.norm_login(body.login)}"
+    if r is not None and int(await r.get(key) or 0) >= FAIL_LIMIT:
+        raise HTTPException(429, "Ko'p noto'g'ri urinish. 15 daqiqadan so'ng qayta urinib ko'ring yoki botda /parol bilan yangi parol oling.")
+    user = await credentials.find_by_credentials(conn, body.login, body.password)
+    if not user:
+        if r is not None:
+            n = await r.incr(key)
+            if n == 1:
+                await r.expire(key, FAIL_WINDOW)
+        raise HTTPException(401, "Login yoki parol noto'g'ri")
+    if user["is_blocked"]:
+        raise HTTPException(403, "Hisobingiz bloklangan")
+    if r is not None:
+        await r.delete(key)
+    return await app_auth.create_session(conn, dict(user), body.device_id, body.device_name)
+
+
+@router.get("/credentials")
+async def my_credentials(user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
+    row = await conn.fetchrow("SELECT login, password_hash IS NOT NULL AS has_password, password_set_at "
+                              "FROM users WHERE id=$1", user["id"])
+    return dict(row) if row else {"login": None, "has_password": False, "password_set_at": None}
+
+
+@router.put("/password")
+async def change_password(body: PasswordChangeIn, user=Depends(get_current_user),
+                          conn: asyncpg.Connection = Depends(get_db)):
+    row = await conn.fetchrow("SELECT login, password_hash FROM users WHERE id=$1", user["id"])
+    if not row or not row["password_hash"] or not verify_password(body.old_password, row["password_hash"]):
+        raise HTTPException(400, "Joriy parol noto'g'ri")
+    await credentials.set_credentials(conn, user["id"], row["login"], body.new_password)
+    return {"success": True}
 
 
 @router.post("/refresh", dependencies=[Depends(rate_limit("app-refresh", 30, 60))])

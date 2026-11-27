@@ -4,12 +4,13 @@ import { ActivityIndicator, AppState, Linking, StyleSheet, Text, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiError } from '../api/client';
+import { Field, Input } from '../components/form';
 import { Button, ErrorNote, T } from '../components/ui';
 import { APP_NAME, LOGIN_POLL_MS, SUPPORT } from '../config';
-import { pollTelegramLogin, startTelegramLogin, useAuth, type LoginTicket } from '../store/auth';
+import { passwordLogin, pollTelegramLogin, startTelegramLogin, useAuth, type LoginTicket } from '../store/auth';
 import { font, useTheme } from '../theme';
 
-type Stage = 'idle' | 'starting' | 'waiting' | 'done';
+type Stage = 'idle' | 'starting' | 'waiting' | 'done' | 'password';
 
 export default function Login() {
   const t = useTheme();
@@ -20,6 +21,9 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const ticket = useRef<{ t: LoginTicket; until: number } | null>(null);
   const busy = useRef(false);
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
 
   const stop = useCallback((msg: string | null) => {
     ticket.current = null;
@@ -72,6 +76,22 @@ export default function Login() {
     }
   };
 
+  const submitPassword = async () => {
+    if (!login.trim() || !password) return setError('Login va parolni kiriting');
+    setError(null);
+    setPwBusy(true);
+    try {
+      const tokens = await passwordLogin(login, password);
+      setStage('done');
+      await completeLogin(tokens);
+      router.replace('/');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kirib bo‘lmadi');
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   if (status === 'signedIn' && stage !== 'done') return <Redirect href="/" />;
 
   return (
@@ -84,7 +104,23 @@ export default function Login() {
         <Text style={s.subtitle}>Taksi, po'puti, yuk tashish va maxsus texnika ijrochilari uchun</Text>
       </View>
       <View style={[s.sheet, { backgroundColor: t.bg }]}>
-        {stage === 'waiting' || stage === 'done' ? (
+        {stage === 'password' ? (
+          <View style={{ gap: 14 }}>
+            <T kind="h2">Login va parol</T>
+            <Field label="Login" hint="Telefon raqamingiz (998901234567) yoki botdagi login">
+              <Input value={login} onChangeText={setLogin} placeholder="998901234567" plain maxLength={40} />
+            </Field>
+            <Field label="Parol">
+              <Input value={password} onChangeText={setPassword} placeholder="••••••••" secure maxLength={100} />
+            </Field>
+            <ErrorNote error={error} />
+            <Button title="Kirish" icon="check" loading={pwBusy} onPress={submitPassword} />
+            <T kind="small" style={{ textAlign: 'center' }}>
+              Parolni bilmaysizmi? Botda /parol yozing — yangi parol keladi.
+            </T>
+            <Button title="Orqaga" kind="ghost" onPress={() => { setError(null); setStage('idle'); }} />
+          </View>
+        ) : stage === 'waiting' || stage === 'done' ? (
           <View style={{ gap: 14, alignItems: 'center' }}>
             <ActivityIndicator size="large" color={t.primary} />
             <T kind="h2" style={{ textAlign: 'center' }}>Telegram'da tasdiqlang</T>
@@ -104,11 +140,12 @@ export default function Login() {
           <View style={{ gap: 14 }}>
             <T kind="h2">Kirish</T>
             <T kind="muted">
-              Akkauntingiz Chortoq Services Mini App'dagi bilan bir xil: transportlar, reyting va tarix saqlanadi. Parol ham,
-              SMS ham kerak emas.
+              Akkauntingiz Chortoq Services Mini App'dagi bilan bir xil: transportlar, reyting va tarix saqlanadi. Birinchi
+              kirishdan so'ng bot login va parol yuboradi.
             </T>
             <ErrorNote error={error} />
             <Button title="Telegram orqali kirish" icon="send" loading={stage === 'starting'} onPress={start} />
+            <Button title="Login va parol bilan kirish" kind="secondary" icon="shield" onPress={() => { setError(null); setStage('password'); }} />
             <T kind="small" style={{ textAlign: 'center' }}>Yordam: {SUPPORT}</T>
           </View>
         )}

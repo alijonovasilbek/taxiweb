@@ -1,4 +1,5 @@
 import asyncpg
+from app.utils import row_to_dict
 from app.auth import verify_telegram_init_data, create_token
 from fastapi import HTTPException
 
@@ -44,7 +45,7 @@ async def authenticate_auto(init_data: str, conn: asyncpg.Connection, admin_ids:
             raise HTTPException(status_code=403, detail="User is blocked")
 
     token = create_token({"id": user["id"], "telegram_id": tg_id, "role": "passenger"})
-    return {"token": token, "role": "passenger", "user": dict(user)}
+    return {"token": token, "role": "passenger", "user": row_to_dict(user)}
 
 
 async def authenticate_passenger(init_data: str, conn: asyncpg.Connection) -> dict:
@@ -73,7 +74,7 @@ async def authenticate_passenger(init_data: str, conn: asyncpg.Connection) -> di
             raise HTTPException(status_code=403, detail="User is blocked")
 
     token = create_token({"id": user["id"], "telegram_id": tg_id, "role": "passenger"})
-    return {"token": token, "role": "passenger", "user": dict(user)}
+    return {"token": token, "role": "passenger", "user": row_to_dict(user)}
 
 
 async def authenticate_driver(init_data: str, conn: asyncpg.Connection) -> dict:

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { Badge, Header, Table, Pager, Btn, Select, StatusBadge, CATEGORY, fmtMoney, fmtDate } from '../../components/ui';
 import { I } from '../../components/icons';
+import { UserDrawer } from '../Users';
 
 const DOC_NAME = { passport: 'Pasport', license: 'Guvohnoma', tech_passport: 'Texpasport', insurance: "Sug'urta", other: 'Boshqa' };
 
@@ -10,6 +11,7 @@ export default function Vehicles() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('pending');
   const [category, setCategory] = useState(null);
+  const [owner, setOwner] = useState(null);
 
   const load = () => api.get('/vehicles', { params: { page, status: status || undefined, category: category || undefined } })
     .then(({ data }) => setData(data)).catch(() => {});
@@ -58,10 +60,12 @@ export default function Vehicles() {
                 onClick={() => approve(v.id)}><I n="check" size={14} stroke={2.6} /> Tasdiqlash</Btn>
             )}
             {v.status !== 'rejected' && <Btn kind="red" onClick={() => reject(v.id)}><I n="close" size={14} stroke={2.6} /> Rad</Btn>}
+            <Btn kind="ghost" title="Tahrirlash, hujjat yuklash, o'chirish" onClick={() => setOwner(v.owner_id)}>Boshqarish</Btn>
           </div>
         ) },
       ]} />
       <Pager page={page} total={data.total} onChange={setPage} />
+      {owner && <UserDrawer key={owner} id={owner} onClose={() => setOwner(null)} onChanged={load} />}
     </div>
   );
 }

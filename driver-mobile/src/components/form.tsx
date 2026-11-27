@@ -14,9 +14,11 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
-export function Input({ value, onChangeText, placeholder, keyboardType, multiline, maxLength }: {
+export function Input({ value, onChangeText, placeholder, keyboardType, multiline, maxLength, secure, plain }: {
   value: string; onChangeText: (v: string) => void; placeholder?: string; keyboardType?: KeyboardTypeOptions;
   multiline?: boolean; maxLength?: number;
+  /** parol maydoni */ secure?: boolean;
+  /** login/parol: katta harf va avtotuzatishsiz */ plain?: boolean;
 }) {
   const t = useTheme();
   return (
@@ -28,6 +30,9 @@ export function Input({ value, onChangeText, placeholder, keyboardType, multilin
       keyboardType={keyboardType}
       multiline={multiline}
       maxLength={maxLength}
+      secureTextEntry={secure}
+      autoCapitalize={plain || secure ? 'none' : undefined}
+      autoCorrect={plain || secure ? false : undefined}
       style={{
         backgroundColor: t.card, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12,
         color: t.text, fontFamily: font.medium, fontSize: 16, minHeight: multiline ? 80 : 50,

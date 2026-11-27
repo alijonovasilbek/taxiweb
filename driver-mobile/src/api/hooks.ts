@@ -42,6 +42,7 @@ export const qk = {
   version: ['app-version'] as const,
   vehicles: ['vehicles-my'] as const,
   sessions: ['sessions'] as const,
+  credentials: ['credentials'] as const,
   driverActive: ['driver-active'] as const,
   earnings: ['driver-earnings'] as const,
 };
@@ -93,6 +94,12 @@ export type AppSession = { id: number; device_id: string; device_name: string | 
 
 export function useSessions() {
   return useQuery({ queryKey: qk.sessions, queryFn: () => api<AppSession[]>('/auth/app/sessions') });
+}
+
+export type Credentials = { login: string | null; has_password: boolean; password_set_at: string | null };
+
+export function useCredentials() {
+  return useQuery({ queryKey: qk.credentials, queryFn: () => api<Credentials>('/auth/app/credentials') });
 }
 
 export type TaxiOrder = {

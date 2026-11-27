@@ -140,6 +140,44 @@ export function Drawer({ title, onClose, children }) {
   );
 }
 
+/** Markazdagi oyna (forma uchun) */
+export function Modal({ title, onClose, children, width = 480 }) {
+  return (
+    <div className="drawer-back" style={{ justifyContent: 'center', alignItems: 'center', zIndex: 60 }} onClick={onClose}>
+      <div className="card" onClick={(e) => e.stopPropagation()}
+        style={{ padding: 26, width, maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,.22)' }}>
+        <div className="drawer-head" style={{ marginBottom: 18 }}>
+          <h2>{title}</h2>
+          <button type="button" className="close-btn" onClick={onClose} aria-label="Yopish"><I n="close" size={15} stroke={2.6} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Field({ label, children, hint }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label className="lbl">{label}</label>
+      {children}
+      {hint && <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 3 }}>{hint}</div>}
+    </div>
+  );
+}
+
+export function ErrorBox({ error }) {
+  if (!error) return null;
+  return <div style={{ background: 'var(--red-soft)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, color: 'var(--red-ink)', fontSize: 13 }}>{error}</div>;
+}
+
+/** Backend xatosini o'qiladigan matnga aylantiradi (FastAPI 422 — ro'yxat) */
+export const errText = (e) => {
+  const d = e?.response?.data?.detail;
+  if (Array.isArray(d)) return d.map((x) => x.msg?.replace(/^Value error, /, '')).join('; ');
+  return d || e?.message || 'Xatolik yuz berdi';
+};
+
 export function KV({ rows }) {
   return (
     <div>

@@ -1,8 +1,12 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
-import { useProviderHome, useSessions } from '../../api/hooks';
-import { Card, Icon, Row, Screen, T } from '../../components/ui';
+import { api } from '../../api/client';
+
+import { useCredentials, useProviderHome, useSessions } from '../../api/hooks';
+import { Field, Input } from '../../components/form';
+import { Button, Card, ErrorNote, Icon, Row, Screen, T } from '../../components/ui';
 import { SUPPORT } from '../../config';
 import { appVersion } from '../../lib/device';
 import { useAuth } from '../../store/auth';
@@ -25,7 +29,7 @@ export default function Profile() {
   const confirmLogout = (all: boolean) =>
     Alert.alert(
       all ? 'Barcha qurilmalardan chiqish' : 'Chiqish',
-      all ? "Barcha telefonlardagi Chortoq Ijrochi sessiyalari yopiladi." : 'Qayta kirish uchun Telegram kerak bo‘ladi.',
+      all ? "Barcha telefonlardagi Chortoq Ijrochi sessiyalari yopiladi." : 'Qayta kirish: Telegram yoki login/parol orqali.',
       [
         { text: 'Bekor qilish', style: 'cancel' },
         { text: 'Chiqish', style: 'destructive', onPress: () => void logout(all) },
@@ -59,6 +63,8 @@ export default function Profile() {
         </View>
       </Card>
 
+      <LoginCard />
+
       <Card>
         <Row icon="shield" title="Ruxsatlar va telefon sozlamalari" subtitle="Joylashuv, bildirishnoma, batareya" onPress={() => router.push('/permissions')} />
       </Card>
@@ -80,5 +86,54 @@ export default function Profile() {
         <T kind="small">Chortoq Ijrochi {appVersion()} · Yordam: {SUPPORT}</T>
       </View>
     </Screen>
+  );
+}
+
+/** Ilova logini va parolni almashtirish. Parol yo'q bo'lsa — botdagi /parol */
+function LoginCard() {
+  const { data, refetch } = useCredentials();
+  const [open, setOpen] = useState(false);
+  const [oldPw, setOldPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    if (newPw.length < 6) return setErr("Yangi parol kamida 6 belgi bo'lsin");
+    setErr(null);
+    setBusy(true);
+    try {
+      await api('/auth/app/password', { method: 'PUT', body: { old_password: oldPw, new_password: newPw } });
+      setOpen(false);
+      setOldPw('');
+      setNewPw('');
+      void refetch();
+      Alert.alert('Parol almashtirildi', 'Keyingi kirishda yangi parolni ishlating.');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Xatolik');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <T kind="label">Kirish ma'lumotlari</T>
+      <Row icon="shield" title={data?.login ? `Login: ${data.login}` : 'Login hali berilmagan'}
+        subtitle={data?.has_password ? 'Parol o‘rnatilgan' : 'Botda /parol yozing — login va parol keladi'} />
+      {data?.has_password ? (
+        open ? (
+          <View style={{ gap: 10 }}>
+            <Field label="Joriy parol"><Input value={oldPw} onChangeText={setOldPw} secure maxLength={100} /></Field>
+            <Field label="Yangi parol"><Input value={newPw} onChangeText={setNewPw} secure maxLength={100} /></Field>
+            <ErrorNote error={err} />
+            <Button title="Saqlash" icon="check" loading={busy} onPress={save} />
+            <Button title="Bekor qilish" kind="ghost" onPress={() => { setOpen(false); setErr(null); }} />
+          </View>
+        ) : (
+          <Button title="Parolni almashtirish" kind="secondary" onPress={() => setOpen(true)} />
+        )
+      ) : null}
+    </Card>
   );
 }

@@ -11,6 +11,7 @@ from app.schemas.auth import TelegramAuthRequest, RefreshRequest, DriverLoginReq
 from app.auth import decode_token, create_token, verify_password
 from app.config import settings
 import asyncpg
+from app.utils import row_to_dict
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -129,7 +130,7 @@ async def dev_login(body: dict, conn: asyncpg.Connection = Depends(get_db)):
             tg_id, first_name, last_name,
         )
     token = create_token({"id": user["id"], "telegram_id": tg_id, "role": "passenger"})
-    return {"token": token, "role": "passenger", "user": dict(user)}
+    return {"token": token, "role": "passenger", "user": row_to_dict(user)}
 
 
 @router.post("/driver-login", dependencies=[Depends(rate_limit("driver-login", 10, 300))])

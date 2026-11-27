@@ -67,6 +67,15 @@ export async function registerDevice(fcmToken?: string): Promise<void> {
   }
 }
 
+// ── Login/parol bilan kirish (login va parolni bot birinchi Telegram kirishida yuboradi; /parol — yangisi) ──
+export async function passwordLogin(login: string, password: string): Promise<Tokens> {
+  return api<Tokens>('/auth/app/password', {
+    method: 'POST',
+    auth: false,
+    body: { login: login.trim(), password, device_id: await getDeviceId(), device_name: deviceName().slice(0, 120) },
+  });
+}
+
 // ── Telegram orqali kirish (backend: /auth/app/start → bot → /auth/app/poll) ──
 export type LoginTicket = { code: string; bot_url: string; expires_in: number; poll_interval: number };
 
