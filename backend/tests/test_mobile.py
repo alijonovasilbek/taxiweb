@@ -190,11 +190,27 @@ def test_location_batch_is_idempotent(client):
     assert r.status_code == 200 and r.json()["accepted"] == 3
     # Xuddi shu paket qayta (internet uzilib, qayta yuborildi) — hech narsa qo'shilmaydi
     assert run(client.post("/api/drivers/me/locations", headers=_bearer(tokens), json={"points": pts})).json()["accepted"] == 0
-    # Noto'g'ri soat (kelajak) va past aniqlik rad etiladi
-    bad = [{"lat": FAR["lat"], "lng": FAR["lng"], "ts": (now + timedelta(hours=1)).isoformat()},
+    # Telefon soati 3 daqiqa orqada: ketma-ket paketlar baribir qabul qilinadi (aks holda heartbeat oflayn qiladi)
+    for k in range(2):
+        skew = [{"lat": FAR["lat"], "lng": FAR["lng"], "ts": (now + timedelta(seconds=20 * (k + 1))).isoformat()}]
+        assert run(client.post("/api/drivers/me/locations", headers=_bearer(tokens), json={"points": skew})).json()["accepted"] == 1
+    # Butunlay noto'g'ri soat va past aniqlik rad etiladi
+    bad = [{"lat": FAR["lat"], "lng": FAR["lng"], "ts": (now + timedelta(days=2)).isoformat()},
            {"lat": FAR["lat"], "lng": FAR["lng"], "ts": now.isoformat(), "accuracy": 900}]
     assert run(client.post("/api/drivers/me/locations", headers=_bearer(tokens), json={"points": bad})).json()["accepted"] == 0
     assert run(client.post("/api/drivers/me/locations", headers=_bearer(tokens), json={"points": []})).status_code == 422
+
+
+def test_location_with_lagging_phone_clock(client):
+    """Telefon soati serverdan 3 daqiqa orqada — har bir yangi paket qabul qilinadi (haydovchi oflayn bo'lib qolmasin)."""
+    tokens, _ = _app_login(client)
+    me = run(client.get("/api/users/me", headers=_bearer(tokens))).json()
+    run(_taxi_driver(me["id"], me["telegram_id"], FAR))
+    base = datetime.now(timezone.utc) - timedelta(minutes=3)
+    for k in range(3):
+        pt = [{"lat": FAR["lat"], "lng": FAR["lng"], "ts": (base + timedelta(seconds=20 * k)).isoformat()}]
+        r = run(client.post("/api/drivers/me/locations", headers=_bearer(tokens), json={"points": pt}))
+        assert r.json()["accepted"] == 1, k
 
 
 def test_sequential_offers(client):

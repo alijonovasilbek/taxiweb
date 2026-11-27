@@ -73,24 +73,41 @@ class LocBatch(BaseModel):
 async def post_locations(body: LocBatch, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
     """Idempotent: avval qabul qilingan (eskiroq) nuqtalar qayta yuborilsa e'tiborsiz qoldiriladi."""
     driver = await conn.fetchrow(
-        """SELECT id, last_location_update::timestamptz AS last_location_update, is_online
-           FROM drivers WHERE telegram_id=$1 AND status='approved'""",
-        user.get("telegram_id"))
+        "SELECT id, is_online FROM drivers WHERE telegram_id=$1 AND status='approved'", user.get("telegram_id"))
     if not driver:
         raise HTTPException(403, "Tasdiqlangan taksi haydovchisi emas")
+    # Takrorlarni QURILMA vaqti bo'yicha ajratamiz (oxirgi qabul qilingan nuqtaning ts'i Redis'da).
+    # Server vaqti bilan solishtirib bo'lmaydi: telefon soati bir-ikki daqiqa orqada bo'lsa, barcha yangi
+    # nuqtalar "eski" bo'lib tashlanar, heartbeat esa haydovchini oflayn qilib qo'yardi.
+    from app.redis_client import get_redis
+    r = get_redis()
+    key = f"driver:loc_ts:{driver['id']}"
+    last = None
+    if r is not None:
+        try:
+            raw = await r.get(key)
+            last = datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw) if raw else None
+        except Exception:
+            last = None
     now = datetime.now(timezone.utc)
-    last = driver["last_location_update"]
     pts = []
     for p in sorted(body.points, key=lambda x: x.ts):
         ts = p.ts if p.ts.tzinfo else p.ts.replace(tzinfo=timezone.utc)
-        if ts > now + timedelta(minutes=2) or ts < now - timedelta(hours=1):
-            continue  # soati noto'g'ri yoki juda eski
+        if abs(ts - now) > timedelta(hours=24):
+            continue  # soati butunlay noto'g'ri
         if p.accuracy is not None and p.accuracy > 200:
             continue  # GPS aniqligi juda past
         if last and ts <= last:
             continue
         pts.append(p.model_dump())
     accepted = await record_location(conn, driver["id"], pts) if pts else 0
+    if pts and r is not None:
+        try:
+            newest = max(p["ts"] for p in pts)
+            newest = newest if newest.tzinfo else newest.replace(tzinfo=timezone.utc)
+            await r.set(key, newest.isoformat(), ex=86400)
+        except Exception:
+            pass
     return {"accepted": accepted, "is_online": driver["is_online"]}
 
 
