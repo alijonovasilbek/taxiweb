@@ -5,7 +5,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../api/client';
@@ -28,6 +28,14 @@ const INFO: Record<string, { title: string; sub?: string; icon: string }> = {
 };
 
 const num = (v: number | string | null | undefined) => (v === null || v === undefined ? NaN : Number(v));
+
+/** To'g'ri chiziq masofasi (km) — haydovchi kelish vaqtini taxmin qilish uchun */
+function km(a: LatLng, b: LatLng) {
+  const r = Math.PI / 180;
+  const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r);
+  const y = (b.lat - a.lat) * r;
+  return Math.sqrt(x * x + y * y) * 6371;
+}
 
 export default function Ride() {
   const t = useTheme();
@@ -81,7 +89,7 @@ export default function Ride() {
   useEffect(() => {
     if (o && !fitted.current) {
       fitted.current = true;
-      setTimeout(() => map.current?.fit(360), 300);
+      setTimeout(() => map.current?.fit(60), 300);
     }
   }, [o]);
 
@@ -133,11 +141,14 @@ export default function Ride() {
   };
 
   const info = INFO[status] ?? INFO.searching;
+  // Haydovchi yo'lda: shahar ichida ~25 km/soat (yo'l to'g'ri chiziqdan ~1,4 marta uzun)
+  const arriveMin = status === 'accepted' && driverLoc && pickup && !Number.isNaN(pickup.lat)
+    ? Math.max(1, Math.round((km(driverLoc, pickup) * 1.4) / 25 * 60)) : null;
   const tone = status === 'completed' || status === 'driver_arrived' ? t.green : ['no_drivers', 'cancelled'].includes(status) ? t.red : t.primary;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={{ height: '48%' }}>
+      <View style={{ height: '56%' }}>
         <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers} />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, padding: 12 }}>
           <Pressable onPress={leave} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
@@ -153,12 +164,15 @@ export default function Ride() {
         ) : null}
       </View>
 
-      <ScrollView style={[s.sheet, { backgroundColor: t.card }]} contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 24 + insets.bottom }}>
+      <ScrollView style={[s.sheet, { backgroundColor: t.sheet }]} contentContainerStyle={{ padding: 16, paddingTop: 8, gap: 14, paddingBottom: 24 + insets.bottom }}>
+        <View style={[s.grabber, { backgroundColor: t.line }]} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={[s.statusIcon, { backgroundColor: tone + '22' }]}><Icon n={info.icon} size={22} color={tone} /></View>
+          <View style={[s.statusIcon, { backgroundColor: tone + '22' }]}>
+            {status === 'searching' ? <ActivityIndicator color={tone} /> : <Icon n={info.icon} size={22} color={tone} />}
+          </View>
           <View style={{ flex: 1 }}>
-            <T kind="h2">{info.title}</T>
-            {info.sub ? <T kind="small">{info.sub}</T> : null}
+            <T kind="h2" style={{ fontSize: 20 }}>{arriveMin ? `~${arriveMin} daqiqada keladi` : info.title}</T>
+            {arriveMin ? <T kind="small">Haydovchi yo'lingizga kelmoqda</T> : info.sub ? <T kind="small">{info.sub}</T> : null}
             {status === 'cancelled' && o?.cancel_reason ? <T kind="small">{o.cancel_reason}</T> : null}
           </View>
           {o ? <T style={{ fontFamily: font.heavy, color: t.primary, fontSize: 17 }}>{money(o.final_price || o.estimated_price)}</T> : null}
@@ -179,7 +193,7 @@ export default function Ride() {
         ) : null}
 
         {o?.driver && status !== 'cancelled' ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: t.fill, borderRadius: 18, padding: 12 }}>
             <View style={[s.avatar, { backgroundColor: t.primary }]}><Icon n="taxi" size={22} color="#fff" /></View>
             <View style={{ flex: 1, gap: 2 }}>
               <T style={{ fontFamily: font.bold }}>{o.driver.name}</T>
@@ -277,7 +291,8 @@ function Finish({ order, onDone }: { order: TaxiOrder; onDone: () => void }) {
 
 const s = StyleSheet.create({
   fab: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 4 },
-  sheet: { flex: 1, marginTop: -24, borderTopLeftRadius: 24, borderTopRightRadius: 24, elevation: 12 },
+  sheet: { flex: 1, marginTop: -26, borderTopLeftRadius: 28, borderTopRightRadius: 28, elevation: 14 },
+  grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 2 },
   statusIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5 },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },

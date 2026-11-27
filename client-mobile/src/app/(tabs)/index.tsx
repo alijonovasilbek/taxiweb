@@ -3,8 +3,9 @@
  * Po'puti / Yuk tashish plitkalari, Maxsus texnika; qo'shimcha — saqlangan va oxirgi manzillar (bir bosishda taksi).
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { setStatusBarStyle } from 'expo-status-bar';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +30,12 @@ export default function Home() {
   const requests = useMyRequests();
   const bookings = useBookings();
   const [refreshing, setRefreshing] = useState(false);
+
+  // Bordo sarlavha ustida holat qatori oq; boshqa ekranlarga o'tilganda mavzuga qaytadi
+  useFocusEffect(useCallback(() => {
+    setStatusBarStyle('light');
+    return () => setStatusBarStyle(t.scheme === 'dark' ? 'light' : 'dark');
+  }, [t.scheme]));
 
   const on = (code: string) => !catalog.data || catalog.data.services.some((s) => s.code === code && s.is_active);
   const openReqs = (requests.data ?? []).filter((r) => ['open', 'assigned', 'in_progress'].includes(r.status));

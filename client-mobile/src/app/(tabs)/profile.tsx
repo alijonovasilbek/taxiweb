@@ -58,6 +58,7 @@ export default function Profile() {
       <LoginCard />
 
       <Card>
+        <Row icon="home" title="Mening manzillarim" subtitle="Uy va ish — taksini bir bosishda chaqirish" onPress={() => router.push('/places')} />
         <Row icon="bell" title="Bildirishnomalar" onPress={() => router.push('/notifications')} />
         <Row icon="taxi" title="Haydovchi yoki ijrochi bo'lish" subtitle="«Chortoq Ijrochi» ilovasini yuklab oling"
           onPress={() => Linking.openURL(DRIVER_APP_URL)} />

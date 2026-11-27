@@ -122,3 +122,20 @@ def test_nearby_cars_hide_driver_identity(client):
     assert set(data["cars"][0]) == {"lat", "lng", "distance_km"}
     assert "+99890" not in r.text and str(d_me["telegram_id"]) not in r.text
     assert me["id"]
+
+
+def test_payment_link_only_for_order_owner(client):
+    owner, _ = _login(client, "client")
+    other, _ = _login(client, "client")
+    o_me = run(client.get("/api/users/me", headers=_bearer(owner))).json()
+    run(_verify_phone(o_me["id"]))
+    far = {"lat": CLI["lat"] - 0.25, "lng": CLI["lng"] + 0.1}
+    r = run(client.post("/api/orders", headers=_bearer(owner), json={
+        "pickup": {"address": "A", **far}, "dropoff": {"address": "B", "lat": far["lat"] + 0.02, "lng": far["lng"]},
+        "payment_method": "click"}))
+    assert r.status_code == 201, r.text
+    oid = r.json()["id"]
+    for kind in ("payme", "click"):
+        assert run(client.post(f"/api/payments/{kind}/create", headers=_bearer(other), json={"order_id": oid})).status_code == 404
+        assert run(client.post(f"/api/payments/{kind}/create", headers=_bearer(owner), json={"order_id": oid})).status_code == 200
+    run(client.put(f"/api/orders/{oid}/cancel", headers=_bearer(owner), json={"reason": "test"}))

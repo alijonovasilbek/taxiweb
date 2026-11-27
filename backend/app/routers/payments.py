@@ -11,7 +11,8 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 
 @router.post("/payme/create")
 async def payme_create(body: PaymentCreateRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    order = await conn.fetchrow("SELECT * FROM orders WHERE id=$1", body.order_id)
+    # Faqat buyurtma egasi (yo'lovchi) to'lov havolasini yarata oladi
+    order = await conn.fetchrow("SELECT * FROM orders WHERE id=$1 AND passenger_id=$2", body.order_id, user["id"])
     if not order:
         raise HTTPException(404, "Order not found")
     amount = round(float(order["estimated_price"]) * 100)
@@ -31,7 +32,8 @@ async def payme_webhook(request: Request, conn: asyncpg.Connection = Depends(get
 
 @router.post("/click/create")
 async def click_create(body: PaymentCreateRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    order = await conn.fetchrow("SELECT estimated_price FROM orders WHERE id=$1", body.order_id)
+    order = await conn.fetchrow("SELECT estimated_price FROM orders WHERE id=$1 AND passenger_id=$2",
+                                body.order_id, user["id"])
     if not order:
         raise HTTPException(404, "Order not found")
     url = (f"https://my.click.uz/services/pay?service_id={settings.click_service_id}"
@@ -50,7 +52,8 @@ async def click_webhook(request: Request, conn: asyncpg.Connection = Depends(get
 
 @router.post("/telegram/create")
 async def telegram_create(body: PaymentCreateRequest, user=Depends(get_current_user), conn: asyncpg.Connection = Depends(get_db)):
-    order = await conn.fetchrow("SELECT * FROM orders WHERE id=$1", body.order_id)
+    # Faqat buyurtma egasi (yo'lovchi) to'lov havolasini yarata oladi
+    order = await conn.fetchrow("SELECT * FROM orders WHERE id=$1 AND passenger_id=$2", body.order_id, user["id"])
     if not order:
         raise HTTPException(404, "Order not found")
     return {"order_id": body.order_id, "amount": float(order["estimated_price"]), "currency": "UZS"}

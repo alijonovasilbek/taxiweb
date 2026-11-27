@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
@@ -122,6 +122,10 @@ export default function TaxiBook() {
   const goConfirm = (to: Place, from?: Place | null) => {
     const a = from ?? currentPickup();
     if (!a) return setError("Olib ketish joyini tanlang: xaritani suring yoki qidiring");
+    // ~50 metrdan yaqin — bir xil joy (pin surilmasdan "Shu yerga" bosilgan)
+    if (Math.abs(a.lat - to.lat) < 0.0005 && Math.abs(a.lng - to.lng) < 0.0005) {
+      return setError("Borish joyi olib ketish joyi bilan bir xil. Xaritani surib boshqa joyni tanlang.");
+    }
     setPickup(a);
     setDropoff(to);
     setStage('confirm');
@@ -154,6 +158,27 @@ export default function TaxiBook() {
     } else router.back();
   };
 
+  // Android "orqaga" tugmasi: avval bosqichma-bosqich (tasdiqlash → manzil → ekrandan chiqish)
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (search) return false;
+      if (stage === 'pickup') return false;
+      back();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
+  /** "Xaritadan tanlash": borish joyini shu ekrandagi pin bilan belgilash */
+  const pickDropoffOnMap = () => {
+    const a = stage === 'confirm' ? pickup : currentPickup();
+    if (a) setPickup(a);
+    setSearch(null);
+    setEst(null);
+    setStage('dropoff');
+    if (dropoff) map.current?.center(dropoff, 17);
+  };
+
   const submit = async () => {
     if (!pickup || !dropoff) return;
     setSending(true);
@@ -176,10 +201,10 @@ export default function TaxiBook() {
   };
 
   const pinMode = stage === 'pickup' || stage === 'dropoff';
-  const pinColor = stage === 'pickup' ? t.primary : t.red;
+  const pinColor = stage === 'pickup' ? t.green : t.red;
   const eta = cars?.eta_min;
   const bubble = stage === 'pickup'
-    ? (moving ? null : eta ? `~${eta} daq` : cars ? "Yaqinda bo'sh mashina yo'q" : null)
+    ? (moving ? null : eta ? `~${eta} daq` : 'Olib ketish joyi')
     : stage === 'dropoff' && !moving ? 'Shu yerga' : null;
 
   return (
@@ -208,7 +233,7 @@ export default function TaxiBook() {
         </Pressable>
         {stage === 'pickup' ? (
           <Pressable onPress={() => setSearch('pickup')} style={[s.addrPill, { backgroundColor: t.card }]}>
-            <View style={[s.dot, { backgroundColor: t.primary }]} />
+            <View style={[s.dot, { backgroundColor: t.green }]} />
             {pin?.busy || moving ? <ActivityIndicator size="small" color={t.primary} /> : (
               <Text numberOfLines={1} style={[s.addrPillText, { color: t.text }]}>{pinAddress || 'Olib ketish joyi'}</Text>
             )}
@@ -253,11 +278,7 @@ export default function TaxiBook() {
                   {recent.map((p) => (
                     <PlaceRow key={p.address} icon="history" title={p.address} onPress={() => goConfirm(p)} />
                   ))}
-                  <PlaceRow icon="map" title="Xaritada ko'rsatish" subtitle="Borish joyini pin bilan tanlang" onPress={() => {
-                    const a = currentPickup();
-                    if (a) setPickup(a);
-                    setStage('dropoff');
-                  }} />
+                  <PlaceRow icon="map" title="Xaritadan tanlash" subtitle="Borish joyini pin bilan belgilang" onPress={pickDropoffOnMap} />
                 </ScrollView>
               </>
             )}
@@ -284,7 +305,7 @@ export default function TaxiBook() {
           <View style={{ gap: 12 }}>
             <View style={[s.points, { backgroundColor: t.fill }]}>
               <Pressable onPress={() => { setStage('pickup'); setEst(null); map.current?.center(pickup, 17); }} style={s.pointRow}>
-                <View style={[s.dot, { backgroundColor: t.primary }]} />
+                <View style={[s.dot, { backgroundColor: t.green }]} />
                 <Text numberOfLines={1} style={[s.pointText, { color: t.text }]}>{pickup.address}</Text>
               </Pressable>
               <View style={[s.pointLine, { backgroundColor: t.line }]} />
@@ -327,14 +348,16 @@ export default function TaxiBook() {
       {search ? (
         <PlaceSearch
           title={search === 'pickup' ? 'Qayerdan' : 'Qayerga'}
+          initial={search === 'dropoff' ? dropoff ?? pin?.p ?? here : pin?.p ?? here}
           onClose={() => setSearch(null)}
+          onMap={search === 'dropoff' ? pickDropoffOnMap : () => { setSearch(null); setStage('pickup'); }}
           onPick={(p) => {
             setSearch(null);
             if (search === 'pickup') {
               setPickup(p);
               map.current?.center(p, 17);
               if (dropoff && stage === 'confirm') goConfirm(dropoff, p);
-            } else goConfirm(p, stage === 'confirm' ? pickup : null);
+            } else goConfirm(p, stage === 'pickup' ? null : pickup);
           }}
         />
       ) : null}

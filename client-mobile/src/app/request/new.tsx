@@ -12,6 +12,16 @@ import { BackHeader, Button, Card, ErrorNote, money, Screen, T } from '../../com
 import { font, useTheme } from '../../theme';
 
 const UNITS = [{ value: 'hour', label: 'soat' }, { value: 'shift', label: 'smena' }, { value: 'day', label: 'kun' }];
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6).map((h) => ({ value: h, label: `${String(h).padStart(2, '0')}:00` }));
+
+function nextDays() {
+  const names = ['Yak', 'Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Shan'];
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() + i * 86_400_000);
+    const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { value: v, label: i === 0 ? 'Bugun' : i === 1 ? 'Ertaga' : `${names[d.getDay()]} ${d.getDate()}` };
+  });
+}
 
 export default function RequestNew() {
   const t = useTheme();
@@ -35,6 +45,9 @@ export default function RequestNew() {
   const [phoneInput, setPhone] = useState<string | null>(null);
   const phone = phoneInput ?? me.data?.phone ?? '';
   const [estimate, setEstimate] = useState<number | null>(null);
+  const [later, setLater] = useState(false);
+  const [day, setDay] = useState(() => nextDays()[1].value);
+  const [hour, setHour] = useState(9);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +83,8 @@ export default function RequestNew() {
           duration_value: isCargo ? null : duration,
           duration_unit: isCargo ? null : unit,
           from, to: isCargo ? to : null,
-          scheduled_at: null,
+          // Toshkent vaqti (backend "naive" vaqt kutadi)
+          scheduled_at: later ? `${day}T${String(hour).padStart(2, '0')}:00:00` : null,
           budget: n(budget),
           phone: phone || null,
         },
@@ -109,6 +123,18 @@ export default function RequestNew() {
           </View>
         </Field>
       )}
+      <Field label="Qachon kerak?">
+        <View style={{ gap: 10 }}>
+          <Chips items={[{ value: 'now', label: 'Imkon qadar tez' }, { value: 'later', label: 'Vaqtini tanlash' }]}
+            value={later ? 'later' : 'now'} onChange={(v) => setLater(v === 'later')} />
+          {later ? (
+            <>
+              <Chips items={nextDays()} value={day} onChange={setDay} />
+              <Chips items={HOURS} value={hour} onChange={setHour} />
+            </>
+          ) : null}
+        </View>
+      </Field>
       <Field label="Izoh (ixtiyoriy)">
         <Input value={description} onChangeText={setDescription} multiline maxLength={1000} placeholder="Qo'shimcha ma'lumot" />
       </Field>
