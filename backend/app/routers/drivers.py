@@ -113,13 +113,10 @@ async def upload_documents(
     updates = {}
     for field, file in [("license_photo_url", license), ("car_doc_photo_url", car_doc)]:
         if file:
-            if not file.content_type.startswith("image/"):
-                raise HTTPException(400, "Only image files allowed")
-            fname = f"{driver['id']}_{field}_{file.filename}"
-            path = os.path.join(settings.upload_dir, fname)
-            async with aiofiles.open(path, "wb") as f:
-                await f.write(await file.read())
-            updates[field] = f"/uploads/{fname}"
+            # Shaxsiy hujjat: yopiq papka, tasodifiy nom (foydalanuvchi bergan fayl nomi ishlatilmaydi —
+            # "../" bilan papkadan chiqib ketish mumkin edi), turi mazmunidan tekshiriladi
+            from app.services.files import save_private_document
+            updates[field] = await save_private_document(file, f"drv{driver['id']}_{field}")
 
     if updates:
         cols = ", ".join(f"{k}=${i+2}" for i, k in enumerate(updates))

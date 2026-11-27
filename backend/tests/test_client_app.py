@@ -150,3 +150,21 @@ def test_notifications_data_is_object(client):
     run(notify(uid, "request_status", "Sinov", "Matn", {"request_id": 77}, telegram=False))
     items = run(client.get("/api/notifications", headers=_bearer(tokens))).json()["items"]
     assert items and items[0]["data"]["request_id"] == 77
+
+
+def test_driver_document_upload_cannot_escape_folder(client):
+    import os
+    from tests.test_services_flow import PNG
+    tokens, _ = _login(client, "driver")
+    me = run(client.get("/api/users/me", headers=_bearer(tokens))).json()
+    run(_taxi_driver(me["id"], me["telegram_id"], {"lat": CLI["lat"] + 0.25, "lng": CLI["lng"] - 0.2}))
+    evil = "../../evil_upload_test.png"
+    r = run(client.post("/api/drivers/me/documents", headers=_bearer(tokens),
+                        files={"license": (evil, PNG, "image/png")}))
+    assert r.status_code == 200, r.text
+    assert (r.json().get("license_photo_url") or "").startswith("private:")
+    assert not os.path.exists(os.path.join(os.getcwd(), "evil_upload_test.png"))
+    # Rasm emas (sarlavhasi image/png bo'lsa ham) — rad etiladi
+    bad = run(client.post("/api/drivers/me/documents", headers=_bearer(tokens),
+                          files={"license": ("x.png", b"print('hack')", "image/png")}))
+    assert bad.status_code == 400
