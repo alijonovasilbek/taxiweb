@@ -27,6 +27,7 @@ const INFO: Record<string, { title: string; sub?: string; icon: string }> = {
   cancelled: { title: 'Buyurtma bekor qilindi', icon: 'close' },
 };
 
+const FINISHED_SET = new Set(['cancelled', 'no_drivers']);
 const num = (v: number | string | null | undefined) => (v === null || v === undefined ? NaN : Number(v));
 
 /** To'g'ri chiziq masofasi (km) — haydovchi kelish vaqtini taxmin qilish uchun */
@@ -74,6 +75,21 @@ export default function Ride() {
 
   const pickup = o ? { lat: num(o.pickup_lat), lng: num(o.pickup_lng) } : null;
   const dropoff = o ? { lat: num(o.dropoff_lat), lng: num(o.dropoff_lng) } : null;
+
+  // Marshrut (ko'chalar bo'ylab): olib ketish → borish joyi; server taxminiy qaytarsa chizilmaydi
+  const [route, setRoute] = useState<[number, number][] | null>(null);
+  const routeFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!o || routeFor.current === o.id) return;
+    routeFor.current = o.id;
+    api<{ polyline?: { lat: number; lng: number }[]; approx?: boolean }>('/maps/route', {
+      query: { fromLat: num(o.pickup_lat), fromLng: num(o.pickup_lng), toLat: num(o.dropoff_lat), toLng: num(o.dropoff_lng) },
+    })
+      .then((r) => {
+        if (!r.approx && r.polyline && r.polyline.length > 2) setRoute(r.polyline.map((p) => [p.lat, p.lng]));
+      })
+      .catch(() => undefined);
+  }, [o]);
 
   const markers = useMemo<MapMarker[]>(() => {
     const m: MapMarker[] = [];
@@ -149,7 +165,8 @@ export default function Ride() {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ height: '56%' }}>
-        <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers} />
+        <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers}
+          route={FINISHED_SET.has(status) ? null : route} />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, padding: 12 }}>
           <Pressable onPress={leave} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
             <Icon n="back" size={22} />

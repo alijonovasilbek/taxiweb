@@ -160,26 +160,71 @@ async def suggest(text: str, lat: float | None = None, lng: float | None = None)
     return out[:8]
 
 
+# Zaxira OSRM (FOSSGIS, OpenStreetMap Germaniya) — asosiy server javob bermasa
+OSRM_FALLBACKS = ("https://routing.openstreetmap.de/routed-car",)
+ROUTE_CACHE_TTL = 24 * 3600
+
+
+async def _osrm(base: str, from_lat: float, from_lng: float, to_lat: float, to_lng: float, timeout: float) -> dict | None:
+    url = f"{base.rstrip('/')}/route/v1/driving/{from_lng},{from_lat};{to_lng},{to_lat}"
+    # Ommaviy OSRM serverlari (FOSSGIS) User-Agent'siz so'rovni rad etadi
+    async with httpx.AsyncClient(headers={"User-Agent": "chortoq-services/1.0"}) as client:
+        response = await client.get(url, params={"overview": "full", "geometries": "geojson"}, timeout=timeout)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("code") != "Ok" or not data.get("routes"):
+        return None
+    route = data["routes"][0]
+    polyline = [{"lat": lat, "lng": lng} for lng, lat in route.get("geometry", {}).get("coordinates", [])]
+    if len(polyline) < 2:
+        return None
+    return {
+        "distance_km": round(route["distance"] / 1000, 2),
+        "duration_min": max(1, int(route["duration"] / 60)),
+        "polyline": polyline,
+    }
+
+
 async def get_route(from_lat: float, from_lng: float, to_lat: float, to_lng: float) -> dict:
-    try:
-        url = f"{settings.osrm_url}/route/v1/driving/{from_lng},{from_lat};{to_lng},{to_lat}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params={"overview": "full", "geometries": "geojson"}, timeout=8)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") == "Ok" and data.get("routes"):
-            route = data["routes"][0]
-            polyline = [
-                {"lat": lat, "lng": lng}
-                for lng, lat in route.get("geometry", {}).get("coordinates", [])
-            ]
-            return {
-                "distance_km": round(route["distance"] / 1000, 2),
-                "duration_min": max(1, int(route["duration"] / 60)),
-                "polyline": polyline,
-            }
-    except Exception:
-        pass
+    """Ko'chalar bo'ylab marshrut. Tartib: Redis kesh → asosiy OSRM (2 urinish) → zaxira OSRM → Yandex → taxminiy.
+    Taxminiy (to'g'ri chiziq) natijada `approx: True` — mijozlar uni yo'l sifatida chizmaydi."""
+    import json
+    from app.redis_client import get_redis
+    r = get_redis()
+    key = f"route:{from_lat:.4f},{from_lng:.4f}:{to_lat:.4f},{to_lng:.4f}"
+    if r is not None:
+        try:
+            hit = await r.get(key)
+            if hit:
+                return json.loads(hit)
+        except Exception:
+            pass
+    async def attempt(base: str, timeout: float) -> dict | None:
+        try:
+            return await _osrm(base, from_lat, from_lng, to_lat, to_lng, timeout)
+        except Exception:
+            return None
+
+    # Asosiy va zaxira serverga bir vaqtda: birinchi muvaffaqiyatli javob olinadi (kutish uzaymaydi)
+    route = None
+    bases = [b for b in (settings.osrm_url, *OSRM_FALLBACKS) if b]
+    for _round in range(2):
+        tasks = [asyncio.create_task(attempt(b, 8)) for b in bases]
+        for fut in asyncio.as_completed(tasks):
+            route = await fut
+            if route:
+                break
+        for t in tasks:
+            t.cancel()
+        if route:
+            break
+    if route:
+        if r is not None:
+            try:
+                await r.set(key, json.dumps(route), ex=ROUTE_CACHE_TTL)
+            except Exception:
+                pass
+        return route
 
     api_key = settings.yandex_router_api_key
     if api_key and not api_key.startswith("your_"):
@@ -204,6 +249,7 @@ async def get_route(from_lat: float, from_lng: float, to_lat: float, to_lng: flo
                         {"lat": from_lat, "lng": from_lng},
                         {"lat": to_lat, "lng": to_lng},
                     ],
+                    "approx": True,
                 }
         except Exception:
             pass
@@ -218,6 +264,7 @@ async def get_route(from_lat: float, from_lng: float, to_lat: float, to_lng: flo
             {"lat": from_lat, "lng": from_lng},
             {"lat": to_lat, "lng": to_lng},
         ],
+        "approx": True,
     }
 
 

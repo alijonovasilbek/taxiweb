@@ -19,7 +19,7 @@ import { PAYMENT } from '../lib/format';
 import { font, useTheme } from '../theme';
 
 type Stage = 'pickup' | 'dropoff' | 'confirm';
-type Est = { distance_km: number; duration_min: number; price: number | null; polyline?: { lat: number; lng: number }[] };
+type Est = { distance_km: number; duration_min: number; price: number | null; polyline?: { lat: number; lng: number }[]; approx?: boolean };
 type Pay = 'cash' | 'payme' | 'click';
 
 export default function TaxiBook() {
@@ -144,10 +144,11 @@ export default function TaxiBook() {
   }, [pickup, dropoff, stage, cars]);
 
   const route = useMemo<[number, number][] | null>(() => {
-    if (stage !== 'confirm') return null;
-    if (est?.polyline?.length) return est.polyline.map((x) => [x.lat, x.lng]);
-    return pickup && dropoff ? [[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]] : null;
-  }, [stage, est, pickup, dropoff]);
+    // Faqat ko'chalar bo'ylab haqiqiy marshrut chiziladi. Yuklanayotganda yoki server taxminiy (to'g'ri chiziq)
+    // qaytarsa — chiziq yo'q, faqat ikki nuqta: "uylar ustidan" o'tgan chiziq chalg'itadi
+    if (stage !== 'confirm' || !est?.polyline || est.approx || est.polyline.length <= 2) return null;
+    return est.polyline.map((x) => [x.lat, x.lng]);
+  }, [stage, est]);
 
   const back = () => {
     setError(null);

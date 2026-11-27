@@ -168,3 +168,16 @@ def test_driver_document_upload_cannot_escape_folder(client):
     bad = run(client.post("/api/drivers/me/documents", headers=_bearer(tokens),
                           files={"license": ("x.png", b"print('hack')", "image/png")}))
     assert bad.status_code == 400
+
+
+def test_route_marks_straight_line_as_approx(client):
+    """Marshrut serverlari ishlamasa — taxminiy natija `approx` bilan (ilovalar uni yo'l sifatida chizmaydi)."""
+    from app.config import settings
+    from app.services import yandex_service as y
+    old_url, old_fb, old_key = settings.osrm_url, y.OSRM_FALLBACKS, settings.yandex_router_api_key
+    settings.osrm_url, y.OSRM_FALLBACKS, settings.yandex_router_api_key = "http://127.0.0.1:9", (), ""
+    try:
+        r = run(y.get_route(CLI["lat"], CLI["lng"], CLI["lat"] + 0.0123, CLI["lng"] + 0.0117))
+        assert r["approx"] is True and len(r["polyline"]) == 2 and r["distance_km"] > 0
+    finally:
+        settings.osrm_url, y.OSRM_FALLBACKS, settings.yandex_router_api_key = old_url, old_fb, old_key
