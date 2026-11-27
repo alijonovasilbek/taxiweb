@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class PaymentCreateRequest(BaseModel):
-    order_id: int
+    # Web App `orderId` yuboradi, ilovalar — `order_id`: ikkalasi ham qabul qilinadi
+    order_id: int = Field(validation_alias=AliasChoices("order_id", "orderId"))
 
 
 class TariffUpdateRequest(BaseModel):

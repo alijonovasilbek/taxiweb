@@ -138,4 +138,15 @@ def test_payment_link_only_for_order_owner(client):
     for kind in ("payme", "click"):
         assert run(client.post(f"/api/payments/{kind}/create", headers=_bearer(other), json={"order_id": oid})).status_code == 404
         assert run(client.post(f"/api/payments/{kind}/create", headers=_bearer(owner), json={"order_id": oid})).status_code == 200
+        # Web App camelCase yuboradi
+        assert run(client.post(f"/api/payments/{kind}/create", headers=_bearer(owner), json={"orderId": oid})).status_code == 200
     run(client.put(f"/api/orders/{oid}/cancel", headers=_bearer(owner), json={"reason": "test"}))
+
+
+def test_notifications_data_is_object(client):
+    tokens, _ = _login(client, "client")
+    uid = run(client.get("/api/users/me", headers=_bearer(tokens))).json()["id"]
+    from app.services.notify import notify
+    run(notify(uid, "request_status", "Sinov", "Matn", {"request_id": 77}, telegram=False))
+    items = run(client.get("/api/notifications", headers=_bearer(tokens))).json()["items"]
+    assert items and items[0]["data"]["request_id"] == 77

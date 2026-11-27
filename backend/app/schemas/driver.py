@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from typing import Optional
 
 
@@ -17,7 +17,8 @@ class DriverStatusRequest(BaseModel):
 
 
 class RatingRequest(BaseModel):
-    order_id: int
+    # Web App camelCase (orderId, targetRole), ilovalar snake_case yuboradi — ikkalasi ham qabul qilinadi
+    order_id: int = Field(validation_alias=AliasChoices("order_id", "orderId"))
     rating: int
     comment: Optional[str] = None
-    target_role: str  # driver | passenger
+    target_role: str = Field(validation_alias=AliasChoices("target_role", "targetRole"))  # driver | passenger

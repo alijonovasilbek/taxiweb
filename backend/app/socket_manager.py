@@ -224,8 +224,12 @@ async def driver_complete_ride(sid, data):
 @sio.on("passenger:track_order")
 async def passenger_track_order(sid, data):
     session = await sio.get_session(sid)
-    order_id = data.get("order_id")
+    order_id = (data or {}).get("order_id") or (data or {}).get("orderId")  # Web App: orderId
     user_id = session.get("id")
+    try:
+        order_id = int(order_id)
+    except (TypeError, ValueError):
+        return
     from app.database import pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

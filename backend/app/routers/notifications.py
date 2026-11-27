@@ -1,3 +1,5 @@
+import json
+
 import asyncpg
 from fastapi import APIRouter, Depends, Query
 
@@ -15,7 +17,18 @@ async def list_notifications(limit: int = Query(50, ge=1, le=200), unread: bool 
         f"SELECT * FROM notifications WHERE {cond} ORDER BY created_at DESC LIMIT $2", user["id"], limit
     )
     count = await conn.fetchval("SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND NOT is_read", user["id"])
-    return {"items": [dict(r) for r in rows], "unread": count}
+    return {"items": [_item(r) for r in rows], "unread": count}
+
+
+def _item(r) -> dict:
+    """asyncpg jsonb'ni matn qilib qaytaradi — mijozlar (Web App, ilova) `data.request_id` kabi obyekt kutadi."""
+    d = dict(r)
+    if isinstance(d.get("data"), str):
+        try:
+            d["data"] = json.loads(d["data"])
+        except ValueError:
+            d["data"] = {}
+    return d
 
 
 @router.get("/unread-count")

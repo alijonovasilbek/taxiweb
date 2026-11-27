@@ -101,7 +101,7 @@ def test_rating_only_by_participants(client):
     # A5: begona odam baho qo'ya olmaydi
     bad = run(client.post("/api/ratings", headers=h(stranger), json={"order_id": o["id"], "rating": 1, "target_role": "driver"}))
     assert bad.status_code == 403
-    ok = run(client.post("/api/ratings", headers=h(pas), json={"order_id": o["id"], "rating": 5, "target_role": "driver"}))
+    ok = run(client.post("/api/ratings", headers=h(pas), json={"orderId": o["id"], "rating": 5, "targetRole": "driver"}))
     assert ok.status_code == 201, ok.text
 
 
