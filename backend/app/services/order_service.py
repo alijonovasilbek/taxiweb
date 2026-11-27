@@ -1,7 +1,7 @@
 import asyncio
 import asyncpg
 from app.log import log
-from app.services.matching_service import find_nearest_drivers
+from app.services.matching_service import find_drivers_expanding
 from app.services.bot_retry import with_retry
 from app.services.notification_service import send_to_passenger
 
@@ -69,7 +69,7 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
     await asyncio.sleep(0)
     order_id = order["id"]
     async with pool.acquire() as c:
-        drivers = await find_nearest_drivers(c, order["pickup_lat"], order["pickup_lng"])
+        drivers = await find_drivers_expanding(c, order["pickup_lat"], order["pickup_lng"])
         passenger = await c.fetchrow("SELECT * FROM users WHERE id=$1", order["passenger_id"])
     order_data = _order_payload(order, passenger)
     ev = _offer_events.setdefault(order_id, asyncio.Event())

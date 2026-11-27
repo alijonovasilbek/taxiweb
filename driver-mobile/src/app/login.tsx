@@ -10,7 +10,7 @@ import { APP_NAME, LOGIN_POLL_MS, SUPPORT } from '../config';
 import { passwordLogin, pollTelegramLogin, startTelegramLogin, useAuth, type LoginTicket } from '../store/auth';
 import { font, useTheme } from '../theme';
 
-type Stage = 'idle' | 'starting' | 'waiting' | 'done' | 'password';
+type Stage = 'idle' | 'starting' | 'waiting' | 'done' | 'password' | 'pwdone';
 
 export default function Login() {
   const t = useTheme();
@@ -82,7 +82,7 @@ export default function Login() {
     setPwBusy(true);
     try {
       const tokens = await passwordLogin(login, password);
-      setStage('done');
+      setStage('pwdone');
       await completeLogin(tokens);
       router.replace('/');
     } catch (e) {
@@ -92,7 +92,7 @@ export default function Login() {
     }
   };
 
-  if (status === 'signedIn' && stage !== 'done') return <Redirect href="/" />;
+  if (status === 'signedIn' && stage !== 'done' && stage !== 'pwdone') return <Redirect href="/" />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.hero }} edges={['top', 'bottom']}>
@@ -119,6 +119,11 @@ export default function Login() {
               Parolni bilmaysizmi? Botda /parol yozing — yangi parol keladi.
             </T>
             <Button title="Orqaga" kind="ghost" onPress={() => { setError(null); setStage('idle'); }} />
+          </View>
+        ) : stage === 'pwdone' ? (
+          <View style={{ gap: 14, alignItems: 'center', paddingVertical: 24 }}>
+            <ActivityIndicator size="large" color={t.primary} />
+            <T kind="h2">Kirilmoqda…</T>
           </View>
         ) : stage === 'waiting' || stage === 'done' ? (
           <View style={{ gap: 14, alignItems: 'center' }}>

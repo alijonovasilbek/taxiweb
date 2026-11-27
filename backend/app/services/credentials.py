@@ -67,6 +67,12 @@ async def find_by_credentials(conn: asyncpg.Connection, login: str, password: st
     row = await conn.fetchrow("SELECT * FROM users WHERE login=$1", norm_login(login))
     if row and verify_password(password, row["password_hash"]):
         return row
+    # Admin panel → Haydovchilar sahifasida berilgan taksi login/paroli (drivers.driver_login) ham o'tadi
+    drv = await conn.fetchrow(
+        "SELECT user_id, password_hash FROM drivers WHERE lower(driver_login)=lower($1) AND user_id IS NOT NULL",
+        login.strip())
+    if drv and verify_password(password, drv["password_hash"]):
+        return await conn.fetchrow("SELECT * FROM users WHERE id=$1", drv["user_id"])
     return None
 
 

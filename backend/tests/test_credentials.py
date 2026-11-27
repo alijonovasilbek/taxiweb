@@ -138,3 +138,28 @@ def test_admin_endpoints_require_admin(client):
     user = login(client, "Oddiy")
     assert run(client.post("/api/admin/users", headers=h(user), json={"first_name": "X"})).status_code in (401, 403)
     assert run(client.delete("/api/admin/users/1", headers=h(user))).status_code in (401, 403)
+
+
+def test_taxi_driver_login_works_in_app(client):
+    """Admin panel → Haydovchilar sahifasida berilgan login/parol (drivers.driver_login) ilovada ham ishlaydi."""
+    admin = login(client, "Admin", "admin", ADMIN_TG)
+    n = random.randint(10**5, 10**6)
+    dl = f"Taksi{n}"
+    r = run(client.post("/api/admin/drivers", headers=h(admin), json={
+        "first_name": "Taksichi", "last_name": "T", "phone": f"+99890{n:07d}"[:13], "car_model": "Cobalt",
+        "car_color": "Oq", "car_number": f"40T{n}", "driver_login": dl, "password": "pass1234"}))
+    assert r.status_code == 201, r.text
+    r = _pw_login(client, dl.lower(), "pass1234")
+    assert r.status_code == 200, r.text
+    assert run(client.get("/api/users/me", headers=_bearer(r.json()))).json()["first_name"] == "Taksichi"
+    assert _pw_login(client, dl, "boshqa-parol").status_code == 401
+    run(_drop_driver(dl))
+
+
+async def _drop_driver(driver_login):
+    async with database.pool.acquire() as conn:
+        uid = await conn.fetchval("DELETE FROM drivers WHERE driver_login=$1 RETURNING user_id", driver_login)
+        await conn.execute("DELETE FROM app_sessions WHERE user_id=$1", uid)
+        await conn.execute("DELETE FROM devices WHERE user_id=$1", uid)
+        await conn.execute("DELETE FROM users WHERE id=$1", uid)
+    await get_redis().delete(f"pwfail:{driver_login.lower()}")

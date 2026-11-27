@@ -27,3 +27,15 @@ async def find_nearest_drivers(conn: asyncpg.Connection, pickup_lat: float, pick
         pickup_lat, pickup_lng, radius_km * 1000, MAX_DRIVERS,
     )
     return [dict(r) for r in rows]
+
+
+# Qishloq/tuman sharoitida 5 km ichida hech kim bo'lmasa — qidiruv radiusi bosqichma-bosqich kengayadi
+EXPAND_RADII_KM = (SEARCH_RADIUS_KM, 15, 30)
+
+
+async def find_drivers_expanding(conn: asyncpg.Connection, pickup_lat: float, pickup_lng: float) -> list[dict]:
+    for radius in EXPAND_RADII_KM:
+        rows = await find_nearest_drivers(conn, pickup_lat, pickup_lng, radius)
+        if rows:
+            return rows
+    return []
