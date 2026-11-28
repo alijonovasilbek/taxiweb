@@ -73,11 +73,13 @@ const TAB_ICONS: Record<string, string> = { index: 'home', search: 'search', ord
 type BarProps = {
   state: { index: number; routes: { key: string; name: string }[] };
   descriptors: Record<string, { options: { title?: string } }>;
-  navigation: { navigate: (name: string) => void; emit: (e: { type: 'tabPress'; target: string; canPreventDefault: true }) => { defaultPrevented: boolean } };
+  // Expo Router 58: `navigation` o'rniga `emitter` va `navigateToTab` beriladi
+  emitter: { emit: (e: { type: 'tabPress'; target: string; canPreventDefault: true }) => { defaultPrevented: boolean } };
+  navigateToTab: (routeKey: string) => void;
 };
 
 /** Web App'dagidek suzib turuvchi pastki menyu: faol bo'lim bordo "tabletka" ichida */
-function FloatingBar({ state, descriptors, navigation }: BarProps) {
+function FloatingBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
@@ -92,8 +94,8 @@ function FloatingBar({ state, descriptors, navigation }: BarProps) {
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               onPress={() => {
-                const ev = navigation.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
-                if (!on && !ev.defaultPrevented) navigation.navigate(r.name);
+                const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+                if (!on && !ev.defaultPrevented) navigateToTab(r.key);
               }}
               style={[bar.item, on && { backgroundColor: t.hHero }]}
             >
