@@ -9,19 +9,19 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
 import { qk, recentPlaces, useMe, useRides, type NearbyCars, type TaxiOrder } from '../api/hooks';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../components/MapView';
 import { PlaceSearch, type Place } from '../components/PlacePicker';
+import { carKind, TariffCar } from '../components/TariffCar';
 import { ErrorNote, Grabber, Icon, IconTile, MapFab, money, RouteCard } from '../components/ui';
 import { greeting, PAYMENT } from '../lib/format';
 import { font, useTheme } from '../theme';
 
 type Stage = 'pickup' | 'dropoff' | 'confirm';
-type Tariff = { id: number; name: string; seats: number; description?: string | null; price: number };
+type Tariff = { id: number; code?: string | null; name: string; seats: number; level?: number; description?: string | null; price: number };
 type Est = {
   distance_km: number; duration_min: number; price: number | null; tariffs?: Tariff[];
   polyline?: { lat: number; lng: number }[]; approx?: boolean;
@@ -364,7 +364,7 @@ export default function TaxiBook() {
                 return (
                   <Pressable key={x.id} onPress={() => setTariffId(x.id)} accessibilityState={{ selected: on }}
                     style={[s.tariff, { borderColor: on ? t.primary : t.line, backgroundColor: on ? t.primarySoft : t.card }]}>
-                    <CarIcon fill={on ? t.primary : t.fill} ink={t.ink} />
+                    <TariffCar kind={carKind(x)} />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.tariffName, { color: t.text }]}>{x.name}</Text>
                       <Text style={[s.tariffMeta, { color: t.muted }]} numberOfLines={1}>
@@ -408,18 +408,6 @@ export default function TaxiBook() {
         />
       ) : null}
     </View>
-  );
-}
-
-/** Tarif qatoridagi mashina chizmasi (dizayndan) */
-function CarIcon({ fill, ink }: { fill: string; ink: string }) {
-  return (
-    <Svg width={44} height={28} viewBox="0 0 44 28" fill="none">
-      <Path d="M5 18 L9 9 Q10 7 13 7 L31 7 Q34 7 35 9 L39 18 Q41 18 41 20 L41 23 L3 23 L3 20 Q3 18 5 18 Z" fill={fill} stroke={ink} strokeWidth={1.6} strokeLinejoin="round" />
-      <Path d="M11 17 L13 11 L31 11 L33 17 Z" fill="#FFFFFF" stroke={ink} strokeWidth={1.4} />
-      <Circle cx={12} cy={23} r={3.5} fill={ink} />
-      <Circle cx={32} cy={23} r={3.5} fill={ink} />
-    </Svg>
   );
 }
 
@@ -499,7 +487,7 @@ const s = StyleSheet.create({
   rowTitle: { fontFamily: font.semibold, fontSize: 15 },
   rowSub: { fontFamily: font.medium, fontSize: 13 },
   roundBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  tariff: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 64, paddingHorizontal: 14, borderRadius: 16, borderWidth: 2 },
+  tariff: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 68, paddingLeft: 8, paddingRight: 14, borderRadius: 18, borderWidth: 2 },
   tariffName: { fontFamily: font.bold, fontSize: 16 },
   tariffMeta: { fontFamily: font.medium, fontSize: 13 },
   tariffPrice: { fontFamily: font.bold, fontSize: 16 },
