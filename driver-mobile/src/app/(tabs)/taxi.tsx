@@ -1,21 +1,30 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, Switch, View } from 'react-native';
+/**
+ * Taksi — dizayndagi "Haydovchi: buyurtma" ekrani: to'liq xarita, tepada "Liniyada" kalit va bugungi daromad,
+ * pastda suzuvchi karta: kutish holati yoki faol safar (yo'lovchi, yo'nalish, navigator, keyingi qadam).
+ * Yangi buyurtma taklifi OfferOverlay'da (xarita ustida karta) ko'rsatiladi.
+ */
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Location from 'expo-location';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '../../api/client';
 import { qk, useDriverActive, useEarnings, useProviderHome, type TaxiOrder } from '../../api/hooks';
-import { Badge, Button, Card, Empty, ErrorNote, Icon, Row, Screen, T, money } from '../../components/ui';
+import { MapView, type LatLng, type MapHandle, type MapMarker } from '../../components/MapView';
+import { Avatar, Button, Card, Empty, ErrorNote, Icon, IconTile, MapFab, RouteCard, Screen, T, money } from '../../components/ui';
 import { BOT_URL } from '../../config';
 import { callPhone, openNavigator } from '../../lib/navigator';
 import { goOffline, goOnline, syncTracking } from '../../lib/taxi';
 import { font, useTheme } from '../../theme';
 
 const STEPS: Record<string, { title: string; next?: { path: string; label: string } }> = {
-  accepted: { title: "Yo'lovchi oldiga boryapsiz", next: { path: 'arrived', label: 'Yetib keldim' } },
-  driver_arrived: { title: "Yetib keldingiz — yo'lovchini kutyapsiz", next: { path: 'start', label: 'Safarni boshlash' } },
+  accepted: { title: "Yo'lovchi oldiga", next: { path: 'arrived', label: 'Yetib keldim' } },
+  driver_arrived: { title: "Yo'lovchini kutyapsiz", next: { path: 'start', label: 'Safarni boshlash' } },
   in_progress: { title: 'Safarda', next: { path: 'complete', label: 'Safarni yakunlash' } },
 };
-const PAYMENT: Record<string, string> = { cash: 'Naqd', click: 'Click', payme: 'Payme', telegram: 'Telegram' };
+const PAYMENT: Record<string, string> = { cash: 'Naqd pul', click: 'Click', payme: 'Payme', telegram: 'Telegram' };
+const num = (v: string | number | null | undefined) => Number(v ?? NaN);
 
 export default function Taxi() {
   const t = useTheme();
@@ -23,6 +32,10 @@ export default function Taxi() {
   const home = useProviderHome();
   const active = useDriverActive();
   const earnings = useEarnings(!!home.data?.taxi);
+  const me = useQuery({ queryKey: ['driver-me'], queryFn: () => api<{ tariff_name?: string }>('/drivers/me'), enabled: !!home.data?.taxi });
+  const map = useRef<MapHandle>(null);
+  const [here, setHere] = useState<LatLng | null>(null);
+  const [cardH, setCardH] = useState(0);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [finished, setFinished] = useState<TaxiOrder | null>(null);
@@ -35,6 +48,63 @@ export default function Taxi() {
   useEffect(() => {
     if (active.data?.driver) void syncTracking(active.data.driver.is_online);
   }, [active.data?.driver]);
+
+  // Xaritadagi o'z joylashuvim (faqat ekran ochiq paytda; serverga yuborish — fon vazifasida)
+  const centered = useRef(false);
+  useEffect(() => {
+    let sub: Location.LocationSubscription | null = null;
+    let dead = false;
+    (async () => {
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted' || dead) return;
+      const last = await Location.getLastKnownPositionAsync();
+      if (last && !dead) setHere({ lat: last.coords.latitude, lng: last.coords.longitude });
+      sub = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 15, timeInterval: 5000 },
+        (p) => setHere({ lat: p.coords.latitude, lng: p.coords.longitude }));
+      if (dead) sub.remove();
+    })().catch(() => undefined);
+    return () => {
+      dead = true;
+      sub?.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (here && !centered.current && !order) {
+      centered.current = true;
+      map.current?.center(here, 15, false);
+    }
+  }, [here, order]);
+  useEffect(() => {
+    if (cardH) map.current?.margin(cardH + 12);
+  }, [cardH]);
+
+  // Faol safar: marshrut (olib ketish → manzil) va hammasini ko'rinishga sig'dirish
+  // Marshrut buyurtma raqami bilan saqlanadi: buyurtma tugasa — o'zi yo'qoladi (effektda setState shart emas)
+  const [routeOf, setRouteOf] = useState<{ id: number; pts: [number, number][] } | null>(null);
+  const route = order && routeOf?.id === order.id ? routeOf.pts : null;
+  const routeFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!order || routeFor.current === order.id) return;
+    routeFor.current = order.id;
+    setTimeout(() => map.current?.fit(cardH + 40), 400);
+    api<{ polyline?: { lat: number; lng: number }[]; approx?: boolean }>('/maps/route', {
+      query: { fromLat: num(order.pickup_lat), fromLng: num(order.pickup_lng), toLat: num(order.dropoff_lat), toLng: num(order.dropoff_lng) },
+    })
+      .then((r) => {
+        if (!r.approx && r.polyline && r.polyline.length > 2) setRouteOf({ id: order.id, pts: r.polyline.map((p) => [p.lat, p.lng]) });
+      })
+      .catch(() => undefined);
+  }, [order, cardH]);
+
+  const markers = useMemo<MapMarker[]>(() => {
+    const m: MapMarker[] = [];
+    if (here) m.push({ id: 'me', type: 'driver', ...here });
+    if (order) {
+      m.push({ id: 'pickup', type: 'pickup', lat: num(order.pickup_lat), lng: num(order.pickup_lng) });
+      m.push({ id: 'dropoff', type: 'dropoff', lat: num(order.dropoff_lat), lng: num(order.dropoff_lng) });
+    }
+    return m;
+  }, [here, order]);
 
   const refreshAll = () => {
     void qc.invalidateQueries({ queryKey: qk.driverActive });
@@ -68,65 +138,61 @@ export default function Taxi() {
   }
 
   return (
-    <Screen refresh={<RefreshControl refreshing={active.isRefetching} onRefresh={refreshAll} tintColor={t.primary} />}>
-      <T kind="title">Taksi</T>
+    <View style={{ flex: 1, backgroundColor: t.map }}>
+      <MapView ref={map} initial={here} markers={markers} route={route} />
 
-      {home.data?.phone_required ? (
-        <Card style={{ backgroundColor: t.orangeSoft }}>
-          <T color={t.orangeInk}>Onlayn bo'lish uchun telefon raqamingizni tasdiqlang: botda «📱 Raqamni ulashish» tugmasini bosing.</T>
-          <Button title="Botni ochish" kind="secondary" icon="send" onPress={() => Linking.openURL(BOT_URL)} />
-        </Card>
-      ) : null}
-
-      {!order ? (
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <T kind="h2">{online ? 'Onlaynsiz' : 'Oflaynsiz'}</T>
-              <T kind="muted">{online ? 'Yaqin buyurtmalar sizga taklif qilinadi' : "Buyurtma olish uchun onlayn bo'ling"}</T>
+      <SafeAreaView edges={['top']} style={s.topBar} pointerEvents="box-none">
+        <Pressable onPress={() => !toggling && !order && toggle(!online)} style={[s.pill, { backgroundColor: t.card }]}>
+          {toggling ? <ActivityIndicator size="small" color={t.primary} /> : (
+            <View style={[s.switch, { backgroundColor: online ? t.green : t.grabber }]}>
+              <View style={[s.knob, online ? { right: 3 } : { left: 3 }]} />
             </View>
-            <Switch
-              value={online}
-              disabled={toggling}
-              onValueChange={toggle}
-              trackColor={{ true: t.green, false: t.fill }}
-              thumbColor="#fff"
-            />
-          </View>
-          {!online ? (
-            <Button title="Onlayn bo'lish" icon="taxi" loading={toggling} onPress={() => toggle(true)} />
-          ) : null}
-          <ErrorNote error={error} />
-        </Card>
-      ) : (
-        <ActiveRide order={order} onDone={(o) => setFinished(o)} onChanged={refreshAll} />
-      )}
+          )}
+          <Text style={[s.pillText, { color: t.text }]}>{online ? 'Liniyada' : 'Oflayn'}</Text>
+        </Pressable>
+        <View style={[s.pill, { backgroundColor: t.ink, paddingHorizontal: 16 }]}>
+          <Text style={[s.pillSub, { color: t.scheme === 'dark' ? '#5f5f5f' : '#cfcfcf' }]}>Bugun</Text>
+          <Text style={[s.pillText, { color: t.onInk }]}>{money(earnings.data?.today_earnings ?? home.data?.earnings_today)}</Text>
+        </View>
+      </SafeAreaView>
 
-      {finished ? <RatePassenger order={finished} onClose={() => setFinished(null)} /> : null}
-
-      {taxi ? (
-        <Card>
-          <Row
-            icon="taxi"
-            title={`${taxi.car_model} · ${taxi.car_number}`}
-            subtitle={`${taxi.car_color} · reyting ${Number(taxi.rating).toFixed(1)}`}
-          />
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Stat label="Bugun" value={money(earnings.data?.today_earnings)} />
-            <Stat label="Jami safarlar" value={String(earnings.data?.total_rides ?? taxi.total_rides ?? 0)} />
-          </View>
-        </Card>
+      {here ? (
+        <MapFab icon="locate" onPress={() => map.current?.center(here, 16)} style={[s.locate, { bottom: cardH + 24 }]} />
       ) : null}
-    </Screen>
-  );
-}
 
-function Stat({ label, value }: { label: string; value: string }) {
-  const t = useTheme();
-  return (
-    <View style={{ flex: 1, backgroundColor: t.fill, borderRadius: 12, padding: 12, gap: 2 }}>
-      <T kind="small">{label}</T>
-      <T style={{ fontFamily: font.bold, fontSize: 17 }}>{value}</T>
+      <View onLayout={(e) => setCardH(Math.round(e.nativeEvent.layout.height))} style={[s.card, { backgroundColor: t.card }]}>
+        <ScrollView contentContainerStyle={{ gap: 14 }} showsVerticalScrollIndicator={false} bounces={false}>
+          {home.data?.phone_required ? (
+            <View style={{ gap: 10 }}>
+              <T color={t.orangeInk}>Onlayn bo'lish uchun telefon raqamingizni tasdiqlang: botda «📱 Raqamni ulashish» tugmasini bosing.</T>
+              <Button title="Botni ochish" kind="secondary" icon="send" onPress={() => Linking.openURL(BOT_URL)} />
+            </View>
+          ) : null}
+
+          {finished ? <RatePassenger order={finished} onClose={() => setFinished(null)} /> : order ? (
+            <ActiveRide order={order} onDone={(o) => setFinished(o)} onChanged={refreshAll} />
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconTile n="taxi" size={48} iconSize={24} bg={online ? t.greenSoft : t.fill} color={online ? t.greenInk : t.text} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[s.h, { color: t.text }]}>{online ? 'Buyurtmalar kutilmoqda' : 'Siz oflaynsiz'}</Text>
+                  <Text style={[s.sub, { color: t.muted }]} numberOfLines={1}>
+                    {taxi ? `${taxi.car_model} · ${taxi.car_number}${me.data?.tariff_name ? ` · ${me.data.tariff_name}` : ''}` : '…'}
+                  </Text>
+                </View>
+                {online ? <ActivityIndicator color={t.primary} /> : null}
+              </View>
+              <ErrorNote error={error} />
+              {online ? (
+                <Button title="Liniyadan chiqish" kind="secondary" loading={toggling} onPress={() => toggle(false)} />
+              ) : (
+                <Button title="Liniyaga chiqish" loading={toggling} onPress={() => toggle(true)} />
+              )}
+            </>
+          )}
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -138,8 +204,8 @@ function ActiveRide({ order, onDone, onChanged }: { order: TaxiOrder; onDone: (o
   const step = STEPS[order.status];
   const toPickup = order.status === 'accepted' || order.status === 'driver_arrived';
   const target = toPickup
-    ? { lat: Number(order.pickup_lat), lng: Number(order.pickup_lng) }
-    : { lat: Number(order.dropoff_lat), lng: Number(order.dropoff_lng) };
+    ? { lat: num(order.pickup_lat), lng: num(order.pickup_lng) }
+    : { lat: num(order.dropoff_lat), lng: num(order.dropoff_lng) };
 
   const next = async () => {
     if (!step?.next) return;
@@ -174,39 +240,37 @@ function ActiveRide({ order, onDone, onChanged }: { order: TaxiOrder; onDone: (o
     ]);
 
   return (
-    <Card style={{ borderWidth: 2, borderColor: t.primary }}>
-      <Badge text={`Buyurtma #${order.id}`} tone="brand" />
-      <T kind="h2">{step?.title ?? order.status}</T>
-      <Row
-        icon="profile"
-        title={order.passenger_name || "Yo'lovchi"}
-        subtitle={order.passenger_rating ? `★ ${Number(order.passenger_rating).toFixed(1)}` : undefined}
-        right={
-          order.passenger_phone ? (
-            <Pressable onPress={() => callPhone(order.passenger_phone!)} hitSlop={10} style={{ backgroundColor: t.greenSoft, borderRadius: 12, padding: 10 }}>
-              <Icon n="phone" size={20} color={t.greenInk} />
-            </Pressable>
-          ) : undefined
-        }
-      />
-      <View style={{ gap: 6 }}>
-        <T kind="muted">📍 {order.pickup_address}</T>
-        <T kind="muted">🏁 {order.dropoff_address}</T>
-        <T kind="small">
-          {[money(order.estimated_price), PAYMENT[order.payment_method] ?? order.payment_method,
-            order.distance_km ? `${Number(order.distance_km).toFixed(1)} km` : null].filter(Boolean).join(' · ')}
-        </T>
+    <View style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={[s.chip, { backgroundColor: t.primary }]}><Text style={[s.chipText, { color: t.onPrimary }]}>{(step?.title ?? order.status).toUpperCase()}</Text></View>
+        <Text style={[s.price, { color: t.text }]}>{money(order.estimated_price)}</Text>
       </View>
-      <Button
-        title={toPickup ? "Navigator: yo'lovchi oldiga" : 'Navigator: manzilga'}
-        kind="secondary"
-        icon="pin"
-        onPress={() => openNavigator(target.lat, target.lng)}
-      />
-      {step?.next ? <Button title={step.next.label} icon="check" loading={busy} onPress={next} style={{ height: 58 }} /> : null}
+
+      <View style={[s.passenger, { backgroundColor: t.fill }]}>
+        <Avatar name={order.passenger_name || "Yo'lovchi"} size={44} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <Text style={[s.h, { color: t.text, fontSize: 16 }]} numberOfLines={1}>{order.passenger_name || "Yo'lovchi"}</Text>
+          <Text style={[s.sub, { color: t.muted }]}>
+            {order.passenger_rating ? `★ ${Number(order.passenger_rating).toFixed(1)} · ` : ''}{PAYMENT[order.payment_method] ?? order.payment_method}
+          </Text>
+        </View>
+        {order.passenger_phone ? (
+          <Pressable onPress={() => callPhone(order.passenger_phone!)} hitSlop={8} style={[s.call, { backgroundColor: t.green }]}>
+            <Icon n="call" size={20} color="#fff" />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <RouteCard from={order.pickup_address} to={order.dropoff_address}
+        toSub={order.distance_km ? `Safar ${Number(order.distance_km).toFixed(1).replace('.', ',')} km${order.duration_min ? ` · ${order.duration_min} daq` : ''}` : undefined} />
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Button title="Navigator" kind="secondary" icon="nav" onPress={() => openNavigator(target.lat, target.lng)} style={{ width: 140 }} />
+        {step?.next ? <Button title={step.next.label} loading={busy} onPress={next} style={{ flex: 1 }} /> : null}
+      </View>
       <ErrorNote error={error} />
-      {order.status !== 'in_progress' ? <Button title="Bekor qilish" kind="ghost" onPress={cancel} /> : null}
-    </Card>
+      {order.status !== 'in_progress' ? <Button title="Bekor qilish" kind="ghost" onPress={cancel} style={{ height: 44 }} /> : null}
+    </View>
   );
 }
 
@@ -223,24 +287,46 @@ function RatePassenger({ order, onClose }: { order: TaxiOrder; onClose: () => vo
     setTimeout(onClose, 1200);
   };
   return (
-    <Card>
-      <T kind="h2">Safar yakunlandi ✅</T>
-      <T kind="muted">{money(order.estimated_price)} · {PAYMENT[order.payment_method] ?? order.payment_method}</T>
+    <View style={{ gap: 12, alignItems: 'center' }}>
+      <IconTile n="check" size={56} round bg={t.primary} color={t.onPrimary} iconSize={28} />
+      <Text style={[s.h, { color: t.text, fontSize: 20 }]}>Safar yakunlandi</Text>
+      <Text style={[s.price, { color: t.text }]}>{money(order.estimated_price)}</Text>
+      <Text style={[s.sub, { color: t.muted }]}>{PAYMENT[order.payment_method] ?? order.payment_method}</Text>
       {sent ? (
         <T color={t.greenInk}>Rahmat!</T>
       ) : (
         <>
           <T>Yo'lovchini baholang</T>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
             {[1, 2, 3, 4, 5].map((n) => (
-              <Pressable key={n} onPress={() => rate(n)} hitSlop={6} style={{ padding: 6 }}>
-                <T style={{ fontSize: 34 }} color={t.orange}>★</T>
+              <Pressable key={n} onPress={() => rate(n)} hitSlop={4} style={{ padding: 4 }}>
+                <Icon n="star" filled size={36} color={t.primary} />
               </Pressable>
             ))}
           </View>
-          <Button title="O'tkazib yuborish" kind="ghost" onPress={onClose} />
+          <Button title="O'tkazib yuborish" kind="ghost" onPress={onClose} style={{ alignSelf: 'stretch', height: 44 }} />
         </>
       )}
-    </Card>
+    </View>
   );
 }
+
+const s = StyleSheet.create({
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: 16 },
+  pill: { height: 48, borderRadius: 24, paddingLeft: 12, paddingRight: 16, flexDirection: 'row', alignItems: 'center', gap: 10, elevation: 4,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10 },
+  pillText: { fontFamily: font.bold, fontSize: 15 },
+  pillSub: { fontFamily: font.medium, fontSize: 13 },
+  switch: { width: 36, height: 22, borderRadius: 11 },
+  knob: { position: 'absolute', top: 3, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff' },
+  locate: { position: 'absolute', right: 16 },
+  card: { position: 'absolute', left: 12, right: 12, bottom: 12, maxHeight: '70%', borderRadius: 28, padding: 20, elevation: 12,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 32, shadowOffset: { width: 0, height: 8 } },
+  h: { fontFamily: font.heavy, fontSize: 18 },
+  sub: { fontFamily: font.medium, fontSize: 13 },
+  chip: { height: 26, paddingHorizontal: 10, borderRadius: 13, justifyContent: 'center' },
+  chipText: { fontFamily: font.heavy, fontSize: 12, letterSpacing: 0.5 },
+  price: { fontFamily: font.heavy, fontSize: 26, letterSpacing: -0.8 },
+  passenger: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 18 },
+  call: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+});

@@ -131,10 +131,23 @@ export function useDriverActive(enabled = true) {
   });
 }
 
+/** Daromad ekrani: bugun, oxirgi 7 kun ustunlari, liniyada vaqt, oxirgi safarlar */
+export type Earnings = {
+  total_earnings: number;
+  total_rides: number;
+  today_earnings: number;
+  today_rides: number;
+  online_min_today: number;
+  rating: number;
+  week: { date: string; weekday: number; total: number; rides: number }[];
+  recent: { id: number; pickup_address: string; dropoff_address: string; final_price: number | string | null;
+    completed_at: string; payment_method: string | null; tariff_name: string | null }[];
+};
+
 export function useEarnings(enabled = true) {
   return useQuery({
     queryKey: qk.earnings,
-    queryFn: () => api<{ total_earnings: number; total_rides: number; today_earnings: number }>('/drivers/me/earnings'),
+    queryFn: () => api<Earnings>('/drivers/me/earnings'),
     enabled,
   });
 }

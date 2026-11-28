@@ -5,8 +5,10 @@ MAX_DRIVERS = 10
 
 
 async def find_nearest_drivers(conn: asyncpg.Connection, pickup_lat: float, pickup_lng: float, radius_km: float = SEARCH_RADIUS_KM,
-                              exclude_user_id: int | None = None) -> list[dict]:
+                              exclude_user_id: int | None = None, min_level: int = 1, min_seats: int = 1) -> list[dict]:
     # exclude_user_id: buyurtma egasi — o'z buyurtmasini o'ziga taklif qilmaymiz (qabul qilish baribir rad etiladi)
+    # min_level/min_seats: buyurtma tarifi talabi — haydovchi tarifining darajasi va o'rinlari yetarli bo'lsin
+    # (tarifi biriktirilmagan haydovchi = Ekonom: daraja 1, 4 o'rin)
     rows = await conn.fetch(
         """SELECT d.id, d.first_name, d.last_name, d.phone,
                   d.car_model, d.car_color, d.car_number, d.rating,
@@ -17,10 +19,12 @@ async def find_nearest_drivers(conn: asyncpg.Connection, pickup_lat: float, pick
                       ST_MakePoint($2,$1)::geography
                   ) / 1000 AS distance_km
            FROM drivers d
+           LEFT JOIN tariffs dt ON dt.id = d.tariff_id
            WHERE d.is_online = true
              AND d.is_on_ride = false
              AND d.status = 'approved'
              AND ($5::int IS NULL OR d.user_id IS DISTINCT FROM $5::int)
+             AND COALESCE(dt.level, 1) >= $6 AND COALESCE(dt.seats, 4) >= $7
              AND ST_DWithin(
                      d.current_location::geography,
                      ST_MakePoint($2,$1)::geography,
@@ -28,7 +32,7 @@ async def find_nearest_drivers(conn: asyncpg.Connection, pickup_lat: float, pick
                  )
            ORDER BY distance_km ASC
            LIMIT $4""",
-        pickup_lat, pickup_lng, radius_km * 1000, MAX_DRIVERS, exclude_user_id,
+        pickup_lat, pickup_lng, radius_km * 1000, MAX_DRIVERS, exclude_user_id, min_level, min_seats,
     )
     return [dict(r) for r in rows]
 
@@ -38,9 +42,10 @@ EXPAND_RADII_KM = (SEARCH_RADIUS_KM, 15, 30)
 
 
 async def find_drivers_expanding(conn: asyncpg.Connection, pickup_lat: float, pickup_lng: float,
-                                 exclude_user_id: int | None = None) -> list[dict]:
+                                 exclude_user_id: int | None = None, min_level: int = 1,
+                                 min_seats: int = 1) -> list[dict]:
     for radius in EXPAND_RADII_KM:
-        rows = await find_nearest_drivers(conn, pickup_lat, pickup_lng, radius, exclude_user_id)
+        rows = await find_nearest_drivers(conn, pickup_lat, pickup_lng, radius, exclude_user_id, min_level, min_seats)
         if rows:
             return rows
     return []

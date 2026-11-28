@@ -12,6 +12,7 @@ export type Offer = {
   passenger_rating: number;
   timeout: number;
   distance_to_pickup_km?: number;
+  tariff_name?: string | null;
 };
 
 type OfferState = {

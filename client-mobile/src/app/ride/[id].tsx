@@ -1,34 +1,35 @@
 /**
- * Safar kuzatuvi: holat (qidiruv → haydovchi yo'lda → keldi → safarda → yakun), haydovchi xaritada real vaqtda,
- * qo'ng'iroq, bekor qilish, "haydovchi topilmadi"da qayta qidirish, yakunda to'lov (Payme/Click) va baho.
+ * Safar kuzatuvi — dizayndagi "Haydovchi kelmoqda" va "Safar tugadi":
+ * xaritada haydovchi real vaqtda, yetib kelish vaqti va davlat raqami, haydovchi kartasi, qo'ng'iroq / xabar / xavfsizlik,
+ * bekor qilish; "haydovchi topilmadi"da qayta qidirish; yakunda — narx, safar ma'lumoti, baho va teglar, onlayn to'lov.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../api/client';
 import { ACTIVE_STATUSES, qk, useOrder, type TaxiOrder } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
-import { Input } from '../../components/form';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../../components/MapView';
-import { Badge, Button, ErrorNote, Glass, Icon, money, T } from '../../components/ui';
+import { Avatar, Button, ErrorNote, Grabber, Icon, IconTile, MapFab, money, Plate, RouteCard, T } from '../../components/ui';
 import { PAYMENT } from '../../lib/format';
-import { font, radius, useTheme } from '../../theme';
+import { font, useTheme } from '../../theme';
 
-const INFO: Record<string, { title: string; sub?: string; icon: string }> = {
-  searching: { title: 'Haydovchi qidirilmoqda…', sub: 'Yaqin haydovchilarga navbat bilan yuborildi', icon: 'search' },
-  accepted: { title: "Haydovchi yo'lingizga kelmoqda", icon: 'taxi' },
-  driver_arrived: { title: 'Haydovchi yetib keldi', sub: 'Chiqishingiz mumkin', icon: 'pin' },
-  in_progress: { title: 'Safar davom etmoqda', sub: "Yo'lingiz bexatar bo'lsin", icon: 'nav' },
-  completed: { title: 'Safar yakunlandi', icon: 'check' },
-  no_drivers: { title: 'Haydovchi topilmadi', sub: "Hozir yaqin atrofda bo'sh haydovchi yo'q", icon: 'close' },
-  cancelled: { title: 'Buyurtma bekor qilindi', icon: 'close' },
+const TOP: Record<string, string> = {
+  searching: 'Haydovchi qidirilmoqda',
+  accepted: "Haydovchi yo'lda",
+  driver_arrived: 'Haydovchi yetib keldi',
+  in_progress: 'Safar davom etmoqda',
+  no_drivers: 'Haydovchi topilmadi',
+  cancelled: 'Buyurtma bekor qilindi',
 };
 
 const FINISHED_SET = new Set(['cancelled', 'no_drivers']);
+const TAGS = ['Toza mashina', 'Xushmuomala', 'Yaxshi haydadi', 'Tez yetib keldi', 'Yoqimli musiqa'];
 const num = (v: number | string | null | undefined) => (v === null || v === undefined ? NaN : Number(v));
+const fmtKm = (v: number) => `${v.toFixed(1).replace('.', ',')} km`;
 
 /** To'g'ri chiziq masofasi (km) — haydovchi kelish vaqtini taxmin qilish uchun */
 function km(a: LatLng, b: LatLng) {
@@ -37,6 +38,8 @@ function km(a: LatLng, b: LatLng) {
   const y = (b.lat - a.lat) * r;
   return Math.sqrt(x * x + y * y) * 6371;
 }
+// Shahar ichida ~25 km/soat, yo'l to'g'ri chiziqdan ~1,4 marta uzun
+const minutes = (a: LatLng, b: LatLng) => Math.max(1, Math.round((km(a, b) * 1.4) / 25 * 60));
 
 export default function Ride() {
   const t = useTheme();
@@ -49,6 +52,7 @@ export default function Ride() {
   const [liveLoc, setDriverLoc] = useState<LatLng | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sheetH, setSheetH] = useState(0);
   const q = useOrder(orderId, true);
   const o = q.data;
   const status = o?.status ?? 'searching';
@@ -100,14 +104,14 @@ export default function Ride() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o?.pickup_lat, o?.dropoff_lat, driverLoc?.lat, driverLoc?.lng, active, status]);
 
-  // Birinchi yuklanishda hammasini ko'rinishga sig'diramiz
+  // Birinchi yuklanishda (varaq o'lchami ma'lum bo'lgach) hammasini varaq ustidagi qismga sig'diramiz
   const fitted = useRef(false);
   useEffect(() => {
-    if (o && !fitted.current) {
+    if (o && sheetH && !fitted.current) {
       fitted.current = true;
-      setTimeout(() => map.current?.fit(60), 300);
+      setTimeout(() => map.current?.fit(sheetH + 20), 300);
     }
-  }, [o]);
+  }, [o, sheetH]);
 
   const cancel = () =>
     Alert.alert('Buyurtmani bekor qilasizmi?', status === 'searching' ? '' : 'Haydovchi allaqachon yo‘lda.', [
@@ -139,6 +143,7 @@ export default function Ride() {
           pickup: { lat: num(o.pickup_lat), lng: num(o.pickup_lng), address: o.pickup_address },
           dropoff: { lat: num(o.dropoff_lat), lng: num(o.dropoff_lng), address: o.dropoff_address },
           payment_method: o.payment_method || 'cash',
+          tariff_id: (o as TaxiOrder & { tariff_id?: number | null }).tariff_id ?? null,
         },
       });
       void qc.invalidateQueries({ queryKey: qk.activeOrder });
@@ -156,103 +161,136 @@ export default function Ride() {
     else router.replace('/(tabs)');
   };
 
-  const info = INFO[status] ?? INFO.searching;
-  // Haydovchi yo'lda: shahar ichida ~25 km/soat (yo'l to'g'ri chiziqdan ~1,4 marta uzun)
-  const arriveMin = status === 'accepted' && driverLoc && pickup && !Number.isNaN(pickup.lat)
-    ? Math.max(1, Math.round((km(driverLoc, pickup) * 1.4) / 25 * 60)) : null;
-  const tone = status === 'completed' || status === 'driver_arrived' ? t.green : ['no_drivers', 'cancelled'].includes(status) ? t.red : t.primary;
+  const share = () => {
+    if (!o) return;
+    const d = o.driver;
+    void Share.share({
+      message: `Chortoq taksi: ${o.pickup_address} → ${o.dropoff_address}` +
+        (d ? `\nHaydovchi: ${d.name}, ${d.car_color} ${d.car_model}, ${d.car_number}${d.phone ? `, ${d.phone}` : ''}` : ''),
+    });
+  };
+
+  if (status === 'completed' && o) return <Finish order={o} onDone={leave} />;
+
+  const arriveMin = status === 'accepted' && driverLoc && pickup && !Number.isNaN(pickup.lat) ? minutes(driverLoc, pickup) : null;
+  const rideMin = status === 'in_progress' && driverLoc && dropoff && !Number.isNaN(dropoff.lat) ? minutes(driverLoc, dropoff) : null;
+  const price = o ? money(o.final_price || o.estimated_price) : '';
+  const payText = o?.payment_method && o.payment_method !== 'cash' ? PAYMENT[o.payment_method] ?? o.payment_method : 'Naqd';
+  const bad = status === 'no_drivers' || status === 'cancelled';
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={{ height: '56%' }}>
-        <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers}
-          route={FINISHED_SET.has(status) ? null : route} />
-        <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, padding: 12 }}>
-          <Pressable onPress={leave} hitSlop={8}>
-            <Glass strong rounded={23} style={s.fab}><Icon n="back" size={22} /></Glass>
-          </Pressable>
-        </SafeAreaView>
-        {driverLoc && active ? (
-          <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, right: 0, padding: 12 }}>
-            <Pressable onPress={() => map.current?.center(driverLoc, 16)} hitSlop={8}>
-              <Glass strong rounded={23} style={s.fab}><Icon n="taxi" size={21} color={t.primary} /></Glass>
-            </Pressable>
-          </SafeAreaView>
-        ) : null}
-      </View>
+    <View style={{ flex: 1, backgroundColor: t.map }}>
+      <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers}
+        route={FINISHED_SET.has(status) ? null : route} />
 
-      <ScrollView style={[s.sheet, { backgroundColor: t.sheet }]} contentContainerStyle={{ padding: 16, paddingTop: 8, gap: 14, paddingBottom: 24 + insets.bottom }}>
-        <View style={[s.grabber, { backgroundColor: t.line }]} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={[s.statusIcon, { backgroundColor: tone + '22' }]}>
-            {status === 'searching' ? <ActivityIndicator color={tone} /> : <Icon n={info.icon} size={22} color={tone} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <T kind="h2" style={{ fontSize: 20 }}>{arriveMin ? `~${arriveMin} daqiqada keladi` : info.title}</T>
-            {arriveMin ? <T kind="small">Haydovchi yo'lingizga kelmoqda</T> : info.sub ? <T kind="small">{info.sub}</T> : null}
-            {status === 'cancelled' && o?.cancel_reason ? <T kind="small">{o.cancel_reason}</T> : null}
-          </View>
-          {o ? <T style={{ fontFamily: font.heavy, color: t.primary, fontSize: 17 }}>{money(o.final_price || o.estimated_price)}</T> : null}
+      <SafeAreaView edges={['top']} style={s.topBar} pointerEvents="box-none">
+        <MapFab icon="back" onPress={leave} />
+        <View style={[s.statusPill, { backgroundColor: bad ? t.redInk : t.ink }]}>
+          {status === 'searching' ? <ActivityIndicator size="small" color={t.onInk} /> : <View style={[s.dot, { backgroundColor: bad ? '#fff' : t.primary }]} />}
+          <Text style={[s.statusText, { color: bad ? '#fff' : t.onInk }]} numberOfLines={1}>{TOP[status] ?? TOP.searching}</Text>
         </View>
-
-        {o ? (
-          <View style={{ borderRadius: radius.md, backgroundColor: t.fill, padding: 12, gap: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <View style={[s.dot, { backgroundColor: t.green }]} /><T numberOfLines={1} style={{ flex: 1 }}>{o.pickup_address}</T>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <View style={[s.dot, { backgroundColor: t.red }]} /><T numberOfLines={1} style={{ flex: 1 }}>{o.dropoff_address}</T>
-            </View>
-            <T kind="small">
-              {o.distance_km ? `${Number(o.distance_km).toFixed(1)} km · ` : ''}{PAYMENT[o.payment_method || 'cash'] ?? o.payment_method}
-            </T>
-          </View>
+        {driverLoc && active && status !== 'searching' ? (
+          <MapFab icon="taxi" color={t.primary} onPress={() => map.current?.center(driverLoc, 16)} />
         ) : null}
+      </SafeAreaView>
 
-        {o?.driver && status !== 'cancelled' ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: t.fill, borderRadius: 18, padding: 12 }}>
-            <View style={[s.avatar, { backgroundColor: t.primary }]}><Icon n="taxi" size={22} color="#fff" /></View>
+      <View onLayout={(e) => setSheetH(Math.round(e.nativeEvent.layout.height))}
+        style={[s.sheet, { backgroundColor: t.sheet, paddingBottom: 20 + insets.bottom }]}>
+        <Grabber />
+        <ScrollView contentContainerStyle={{ gap: 16 }} showsVerticalScrollIndicator={false} bounces={false}>
+          {/* Sarlavha: kelish vaqti / holat + davlat raqami */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
             <View style={{ flex: 1, gap: 2 }}>
-              <T style={{ fontFamily: font.bold }}>{o.driver.name}</T>
-              <T kind="small">{o.driver.car_color} {o.driver.car_model}</T>
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <View style={[s.plate, { borderColor: t.text }]}><T style={{ fontFamily: font.heavy, fontSize: 13 }}>{o.driver.car_number}</T></View>
-                <T kind="small">★ {Number(o.driver.rating || 5).toFixed(1)}</T>
+              <Text style={[s.kicker, { color: t.muted }]}>
+                {status === 'accepted' ? 'Yetib keladi' : status === 'in_progress' ? 'Manzilgacha' : status === 'driver_arrived' ? 'Sizni kutmoqda' : ' '}
+              </Text>
+              <Text style={[s.big, { color: t.text }]} numberOfLines={2}>
+                {arriveMin ? `${arriveMin} daqiqa` : rideMin ? `~${rideMin} daqiqa`
+                  : status === 'driver_arrived' ? 'Chiqing' : status === 'searching' ? 'Qidirilmoqda…'
+                    : status === 'no_drivers' ? 'Bo‘sh haydovchi yo‘q' : status === 'cancelled' ? 'Bekor qilindi'
+                      : status === 'accepted' ? 'Yo‘lda' : 'Safarda'}
+              </Text>
+            </View>
+            {o?.driver && !bad ? <Plate number={o.driver.car_number} /> : null}
+          </View>
+
+          {status === 'cancelled' && o?.cancel_reason ? <T kind="muted">{o.cancel_reason}</T> : null}
+          {status === 'searching' ? <T kind="muted">Yaqin haydovchilarga navbat bilan yuborildi</T> : null}
+
+          {o?.driver && !bad ? (
+            <View style={[s.driver, { backgroundColor: t.fill }]}>
+              <Avatar name={o.driver.name} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[s.driverName, { color: t.text }]} numberOfLines={1}>{o.driver.name}</Text>
+                <Text style={[s.driverCar, { color: t.muted }]} numberOfLines={1}>{o.driver.car_model} · {o.driver.car_color}</Text>
+              </View>
+              <View style={[s.ratingPill, { backgroundColor: t.card }]}>
+                <Icon n="star" filled size={14} color={t.text} />
+                <Text style={[s.ratingText, { color: t.text }]}>{Number(o.driver.rating || 5).toFixed(1).replace('.', ',')}</Text>
               </View>
             </View>
-            {o.driver.phone && active ? (
-              <Pressable onPress={() => Linking.openURL(`tel:${o.driver!.phone}`)} style={[s.call, { backgroundColor: t.green }]}>
-                <Icon n="call" size={22} color="#fff" />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+          ) : null}
 
-        <ErrorNote error={error} />
+          {o?.driver && active ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Action icon="call" label="Qo‘ng‘iroq" disabled={!o.driver.phone} onPress={() => Linking.openURL(`tel:${o.driver!.phone}`)} />
+              <Action icon="chat" label="Xabar" disabled={!o.driver.phone} onPress={() => Linking.openURL(`sms:${o.driver!.phone}`)} />
+              <Action icon="shield" label="Xavfsizlik" onPress={share} />
+            </View>
+          ) : null}
 
-        {status === 'no_drivers' ? <Button title="Qayta qidirish" icon="repeat" loading={busy} onPress={retry} /> : null}
-        {status === 'completed' && o ? <Finish order={o} onDone={leave} /> : null}
-        {['searching', 'accepted', 'driver_arrived'].includes(status) ? (
-          <Button title="Buyurtmani bekor qilish" kind="danger" loading={busy} onPress={cancel} />
-        ) : null}
-        {['no_drivers', 'cancelled'].includes(status) || status === 'searching' ? (
-          <Button title={status === 'searching' ? 'Orqaga (qidiruv davom etadi)' : 'Asosiy sahifa'} kind="ghost" onPress={leave} />
-        ) : null}
-      </ScrollView>
+          {o && (status === 'searching' || bad) ? <RouteCard from={o.pickup_address} to={o.dropoff_address} /> : null}
+
+          <ErrorNote error={error} />
+
+          {o ? (
+            <View style={s.footer}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[s.footSub, { color: t.muted }]} numberOfLines={1}>
+                  {o.dropoff_address}{o.tariff_name ? ` · ${o.tariff_name}` : ''}
+                </Text>
+                <Text style={[s.footMain, { color: t.text }]}>{price} · {payText}</Text>
+              </View>
+              {['searching', 'accepted', 'driver_arrived'].includes(status) ? (
+                <Pressable onPress={busy ? undefined : cancel} style={[s.cancel, { backgroundColor: t.redSoft }]}>
+                  {busy ? <ActivityIndicator color={t.redInk} /> : <Text style={[s.cancelText, { color: t.redInk }]}>Bekor qilish</Text>}
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          {status === 'no_drivers' ? <Button title="Qayta qidirish" icon="repeat" loading={busy} onPress={retry} /> : null}
+          {bad ? <Button title="Asosiy sahifa" kind="secondary" onPress={leave} /> : null}
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
-/** Yakun: onlayn to'lov (Payme/Click tanlangan bo'lsa) va haydovchiga baho */
+function Action({ icon, label, onPress, disabled }: { icon: string; label: string; onPress: () => void; disabled?: boolean }) {
+  const t = useTheme();
+  return (
+    <Pressable onPress={disabled ? undefined : onPress}
+      style={({ pressed }) => [s.action, { borderColor: t.line, backgroundColor: t.card, opacity: disabled ? 0.45 : 1 }, pressed && { opacity: 0.7 }]}>
+      <Icon n={icon} size={22} color={t.text} />
+      <Text style={[s.actionText, { color: t.text }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** "Safar tugadi": narx, safar ma'lumoti, baho + teglar, onlayn to'lov */
 function Finish({ order, onDone }: { order: TaxiOrder; onDone: () => void }) {
   const t = useTheme();
   const qc = useQueryClient();
   const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rated, setRated] = useState(order.passenger_rated);
   const online = order.payment_method === 'payme' || order.payment_method === 'click';
+  const name = order.driver?.name?.split(' ')[0] || 'Haydovchi';
+  const mins = order.started_at && order.completed_at
+    ? Math.max(1, Math.round((Date.parse(order.completed_at) - Date.parse(order.started_at)) / 60000)) : order.duration_min;
 
   const pay = async () => {
     try {
@@ -269,7 +307,7 @@ function Finish({ order, onDone }: { order: TaxiOrder; onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api('/ratings', { method: 'POST', body: { order_id: order.id, rating, comment: comment || null, target_role: 'driver' } });
+      await api('/ratings', { method: 'POST', body: { order_id: order.id, rating, comment: tags.join(', ') || null, target_role: 'driver' } });
       setRated(true);
       void qc.invalidateQueries({ queryKey: qk.order(order.id) });
     } catch (e) {
@@ -280,39 +318,113 @@ function Finish({ order, onDone }: { order: TaxiOrder; onDone: () => void }) {
   };
 
   return (
-    <View style={{ gap: 12 }}>
-      {online ? <Button title={`${order.payment_method === 'payme' ? 'Payme' : 'Click'} orqali to'lash`} icon="card" kind="secondary" onPress={pay} /> : null}
-      {rated ? (
-        <View style={{ alignItems: 'center', gap: 6, paddingVertical: 8 }}>
-          <Badge text="Baho uchun rahmat!" tone="green" />
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: t.card }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 24, gap: 20, flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Pressable onPress={onDone} hitSlop={8} style={[s.close, { backgroundColor: t.fill }]}><Icon n="close" size={20} /></Pressable>
         </View>
-      ) : (
-        <>
-          <T kind="label">Haydovchini baholang</T>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12 }}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Pressable key={n} onPress={() => setRating(n)} hitSlop={6}>
-                <Icon n="star" size={38} color={n <= rating ? '#ff9f0a' : t.faint} />
-              </Pressable>
-            ))}
+
+        <View style={{ alignItems: 'center', gap: 10 }}>
+          <IconTile n="check" size={64} round bg={t.primary} color={t.onPrimary} iconSize={32} />
+          <Text style={[s.doneTitle, { color: t.text }]}>Manzilga yetib keldingiz</Text>
+          <Text style={[s.donePrice, { color: t.text }]}>{money(order.final_price || order.estimated_price)}</Text>
+          <Text style={[s.doneSub, { color: t.muted }]}>
+            {online ? `${PAYMENT[order.payment_method!]} orqali to‘lanadi` : 'Naqd pul bilan to‘lanadi'}
+          </Text>
+        </View>
+
+        <View style={[s.stats, { backgroundColor: t.fill }]}>
+          <Stat label="Masofa" value={order.distance_km ? fmtKm(Number(order.distance_km)) : '—'} />
+          <Stat label="Vaqt" value={mins ? `${mins} daq` : '—'} />
+          <Stat label="Tarif" value={order.tariff_name || 'Ekonom'} />
+        </View>
+
+        {online ? <Button title={`${order.payment_method === 'payme' ? 'Payme' : 'Click'} orqali to'lash`} icon="card" kind="secondary" onPress={pay} /> : null}
+
+        {rated ? (
+          <View style={{ alignItems: 'center', gap: 6, paddingVertical: 8 }}>
+            <T kind="h2">Baho uchun rahmat!</T>
+            <T kind="muted">Fikringiz haydovchilarni yaxshilashga yordam beradi</T>
           </View>
-          <Input value={comment} onChangeText={setComment} placeholder="Izoh (ixtiyoriy)" multiline maxLength={300} />
-          <ErrorNote error={error} />
-          <Button title="Baholash" icon="star" loading={busy} onPress={rate} />
-        </>
-      )}
-      <Button title="Asosiy sahifa" kind="ghost" onPress={onDone} />
+        ) : (
+          <>
+            <View style={{ alignItems: 'center', gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Avatar name={name} size={40} />
+                <Text style={[s.ask, { color: t.text }]}>{name} bilan safar qanday o‘tdi?</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Pressable key={n} onPress={() => setRating(n)} hitSlop={4} style={s.star} accessibilityLabel={`${n} yulduz`}>
+                    <Icon n="star" filled={n <= rating} size={38} color={n <= rating ? t.primary : t.faint} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {TAGS.map((tag) => {
+                const on = tags.includes(tag);
+                return (
+                  <Pressable key={tag} onPress={() => setTags(on ? tags.filter((x) => x !== tag) : [...tags, tag])}
+                    style={[s.tag, { borderColor: on ? t.primary : t.line, backgroundColor: on ? t.primarySoft : t.card }]}>
+                    <Text style={[s.tagText, { color: t.text }]}>{tag}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        <View style={{ flex: 1 }} />
+        <ErrorNote error={error} />
+        {rated ? <Button title="Yopish" onPress={onDone} /> : <Button title="Baholash" loading={busy} onPress={rate} />}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+      <Text style={[s.statLabel, { color: t.muted }]}>{label}</Text>
+      <Text style={[s.statValue, { color: t.text }]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  fab: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', elevation: 4 },
-  sheet: { flex: 1, marginTop: -26, borderTopLeftRadius: 28, borderTopRightRadius: 28, elevation: 14 },
-  grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 2 },
-  statusIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  plate: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
-  call: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
+  statusPill: { flex: 1, height: 40, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
+  statusText: { fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  sheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '62%', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 20, paddingTop: 12, elevation: 16, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 24,
+  },
+  kicker: { fontFamily: font.medium, fontSize: 14 },
+  big: { fontFamily: font.heavy, fontSize: 32, letterSpacing: -1 },
+  driver: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18 },
+  driverName: { fontFamily: font.bold, fontSize: 16 },
+  driverCar: { fontFamily: font.medium, fontSize: 13 },
+  ratingPill: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 32, paddingHorizontal: 10, borderRadius: 16 },
+  ratingText: { fontFamily: font.bold, fontSize: 14 },
+  action: { flex: 1, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  actionText: { fontFamily: font.semibold, fontSize: 13 },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 2 },
+  footSub: { fontFamily: font.medium, fontSize: 13 },
+  footMain: { fontFamily: font.bold, fontSize: 17 },
+  cancel: { height: 44, paddingHorizontal: 16, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontFamily: font.bold, fontSize: 14 },
+  close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  doneTitle: { fontFamily: font.heavy, fontSize: 24, letterSpacing: -0.5, textAlign: 'center' },
+  donePrice: { fontFamily: font.heavy, fontSize: 40, letterSpacing: -1.2 },
+  doneSub: { fontFamily: font.medium, fontSize: 14 },
+  stats: { flexDirection: 'row', padding: 14, borderRadius: 18 },
+  statLabel: { fontFamily: font.medium, fontSize: 12 },
+  statValue: { fontFamily: font.bold, fontSize: 16 },
+  ask: { fontFamily: font.semibold, fontSize: 16, flexShrink: 1 },
+  star: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  tag: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1.5, justifyContent: 'center' },
+  tagText: { fontFamily: font.semibold, fontSize: 14 },
 });

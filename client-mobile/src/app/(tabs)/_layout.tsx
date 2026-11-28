@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { qk } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
-import { Glass, Icon } from '../../components/ui';
+import { Icon } from '../../components/ui';
 import { askNotifications, notifyIfBackground } from '../../lib/notify';
 import { useAuth } from '../../store/auth';
 import { font, useTheme } from '../../theme';
@@ -58,67 +57,63 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      tabBar={(props) => <FloatingBar {...(props as unknown as BarProps)} />}
+      tabBar={(props) => <BottomBar {...(props as unknown as BarProps)} />}
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.bg } }}
     >
       <Tabs.Screen name="index" options={{ title: 'Asosiy' }} />
-      <Tabs.Screen name="search" options={{ title: 'Qidiruv' }} />
       <Tabs.Screen name="orders" options={{ title: 'Buyurtmalar' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
+      {/* Qidiruv menyuda yo'q (dizayn: 3 bo'lim), lekin ekran bosh sahifadan ochiladi */}
+      <Tabs.Screen name="search" options={{ title: 'Qidiruv', href: null }} />
     </Tabs>
   );
 }
 
-const TAB_ICONS: Record<string, string> = { index: 'home', search: 'search', orders: 'orders', profile: 'profile' };
+const TAB_ICONS: Record<string, string> = { index: 'home', orders: 'orders', profile: 'profile' };
 
 type BarProps = {
   state: { index: number; routes: { key: string; name: string }[] };
-  descriptors: Record<string, { options: { title?: string } }>;
+  descriptors: Record<string, { options: { title?: string; href?: string | null } }>;
   // Expo Router 58: `navigation` o'rniga `emitter` va `navigateToTab` beriladi
   emitter: { emit: (e: { type: 'tabPress'; target: string; canPreventDefault: true }) => { defaultPrevented: boolean } };
   navigateToTab: (routeKey: string) => void;
 };
 
-/** Web App'dagidek suzib turuvchi pastki menyu: faol bo'lim bordo "tabletka" ichida */
-function FloatingBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
+/** Dizayndagi pastki menyu: oq panel, faol bo'lim ikonkasi bordo tusli "tabletka" ichida */
+function BottomBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View pointerEvents="box-none" style={[bar.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <Glass strong rounded={28} style={[bar.bar, { shadowColor: t.shadow }]}>
-        {state.routes.map((r, i) => {
-          const on = state.index === i;
-          const title = descriptors[r.key]?.options.title ?? r.name;
-          return (
-            <Pressable
-              key={r.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              onPress={() => {
-                const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
-                if (!on && !ev.defaultPrevented) navigateToTab(r.key);
-              }}
-              style={[bar.item, on && { backgroundColor: t.hHero, borderColor: 'rgba(255,255,255,0.35)' }]}
-            >
-              {on ? (
-                <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.32)', 'rgba(255,255,255,0.04)', 'rgba(0,0,0,0.12)']}
-                  locations={[0, 0.5, 1]} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} />
-              ) : null}
-              <Icon n={TAB_ICONS[r.name] ?? 'home'} size={22} color={on ? '#fff' : t.muted} outline={!on} />
-              <Text numberOfLines={1} style={[bar.label, { color: on ? '#fff' : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{title}</Text>
-            </Pressable>
-          );
-        })}
-      </Glass>
+    <View style={[bar.bar, { backgroundColor: t.tabBar, borderTopColor: t.line, paddingBottom: insets.bottom }]}>
+      {state.routes.map((r, i) => {
+        if (!TAB_ICONS[r.name]) return null;
+        const on = state.index === i;
+        const title = descriptors[r.key]?.options.title ?? r.name;
+        return (
+          <Pressable
+            key={r.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => {
+              const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+              if (!on && !ev.defaultPrevented) navigateToTab(r.key);
+            }}
+            style={bar.item}
+          >
+            <View style={[bar.pill, on && { backgroundColor: t.primarySoft }]}>
+              <Icon n={TAB_ICONS[r.name]} size={on ? 21 : 22} color={on ? t.primary : t.muted} filled={on} />
+            </View>
+            <Text numberOfLines={1} style={[bar.label, { color: on ? t.text : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{title}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
 const bar = StyleSheet.create({
-  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14 },
-  // strong (0.92) shisha: Android soyasi ostidan deyarli ko'rinmaydi
-  bar: { flexDirection: 'row', padding: 6, gap: 4, elevation: 10, shadowOpacity: 1, shadowRadius: 20 },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 22, paddingVertical: 8, gap: 2, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'transparent' },
-  label: { fontSize: 11 },
+  bar: { flexDirection: 'row', borderTopWidth: 1, paddingHorizontal: 8 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, height: 76 },
+  pill: { width: 52, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 12 },
 });

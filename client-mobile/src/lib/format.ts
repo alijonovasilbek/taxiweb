@@ -57,3 +57,12 @@ export const ORDER_STATUS: Record<string, { text: string; tone: Tone }> = {
 };
 
 export const PAYMENT: Record<string, string> = { cash: 'Naqd', payme: 'Payme', click: 'Click' };
+
+/** Kun vaqtiga qarab salomlashuv */
+export function greeting(d = new Date()) {
+  const h = d.getHours();
+  if (h < 5) return 'Xayrli tun';
+  if (h < 12) return 'Xayrli tong';
+  if (h < 18) return 'Xayrli kun';
+  return 'Xayrli kech';
+}

@@ -21,6 +21,8 @@ export type MapMarker = LatLng & { id: string; type: 'pickup' | 'dropoff' | 'dri
 export type MapHandle = {
   center: (p: LatLng, zoom?: number, animate?: boolean) => void;
   fit: (bottomInset?: number) => void;
+  /** Pastki varaq balandligi: pin va "markaz" varaq ustidagi ko'rinadigan qism o'rtasida bo'ladi */
+  margin: (bottom: number) => void;
 };
 
 type Props = {
@@ -55,6 +57,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
   useImperativeHandle(ref, () => ({
     center: (p, zoom, animate = true) => send({ t: 'center', lat: p.lat, lng: p.lng, zoom, animate }),
     fit: (bottom) => send({ t: 'fit', bottom }),
+    margin: (bottom) => send({ t: 'margin', bottom }),
   }), [send]);
 
   useEffect(() => {

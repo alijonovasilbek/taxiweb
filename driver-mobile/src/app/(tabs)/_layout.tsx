@@ -2,12 +2,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, AppState, StyleSheet, type ColorValue } from 'react-native';
+import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { qk, useProviderHome } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
 import { OfferOverlay } from '../../components/OfferOverlay';
-import { Glass, Icon, money } from '../../components/ui';
+import { Icon, money } from '../../components/ui';
 import { getItem, setItem } from '../../lib/storage';
 import { useAuth } from '../../store/auth';
 import { useOffer, type Offer } from '../../store/offer';
@@ -86,36 +87,73 @@ export default function TabsLayout() {
 
   if (status !== 'signedIn') return <Redirect href="/login" />;
 
-  const tab = (title: string, icon: string, visible = true) => ({
-    title,
-    href: visible ? undefined : null,
-    tabBarIcon: ({ color, focused }: { color: ColorValue; focused: boolean }) => (
-      <Icon n={icon} size={24} color={String(color)} outline={!focused} />
-    ),
-  });
+  const hasTaxi = sections.includes('taxi');
+  const tab = (title: string, visible = true) => ({ title, href: visible ? undefined : null });
 
   return (
     <>
       <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: t.primary,
-          tabBarInactiveTintColor: t.faint,
-          tabBarStyle: { backgroundColor: 'transparent', borderTopColor: t.line, elevation: 0 },
-          // Liquid glass fon (menyu ostidagi kontent ustida shaffof yuza)
-          tabBarBackground: () => <Glass strong rounded={0} style={[StyleSheet.absoluteFill, { borderWidth: 0 }]} />,
-          tabBarLabelStyle: { fontFamily: font.semibold, fontSize: 11 },
-          sceneStyle: { backgroundColor: t.bg },
-        }}
+        tabBar={(props) => <BottomBar {...(props as unknown as BarProps)} />}
+        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.bg } }}
       >
-        <Tabs.Screen name="index" options={tab('Bosh', 'home')} />
-        <Tabs.Screen name="taxi" options={tab('Taksi', 'taxi', sections.includes('taxi'))} />
-        <Tabs.Screen name="carpool" options={tab('Qatnovlar', 'carpool', sections.includes('carpool'))} />
-        <Tabs.Screen name="requests" options={tab("So'rovlar", 'requests', sections.includes('requests'))} />
-        <Tabs.Screen name="vehicles" options={tab('Transport', 'vehicles')} />
-        <Tabs.Screen name="profile" options={tab('Profil', 'profile')} />
+        <Tabs.Screen name="index" options={tab(hasTaxi ? 'Daromad' : 'Bosh')} />
+        <Tabs.Screen name="taxi" options={tab('Xarita', hasTaxi)} />
+        <Tabs.Screen name="carpool" options={tab('Qatnovlar', sections.includes('carpool'))} />
+        <Tabs.Screen name="requests" options={tab("So'rovlar", sections.includes('requests'))} />
+        <Tabs.Screen name="vehicles" options={tab('Transport')} />
+        <Tabs.Screen name="profile" options={tab('Profil')} />
       </Tabs>
       <OfferOverlay />
     </>
   );
 }
+
+type BarProps = {
+  state: { index: number; routes: { key: string; name: string }[] };
+  descriptors: Record<string, { options: { title?: string; href?: string | null } }>;
+  // Expo Router 58: `navigation` o'rniga `emitter` va `navigateToTab` beriladi
+  emitter: { emit: (e: { type: 'tabPress'; target: string; canPreventDefault: true }) => { defaultPrevented: boolean } };
+  navigateToTab: (routeKey: string) => void;
+};
+
+/** Dizayndagi pastki menyu: oq panel, faol bo'lim ikonkasi bordo "tabletka" ichida; yashirin bo'limlar (href: null) ko'rinmaydi */
+function BottomBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[bar.bar, { backgroundColor: t.tabBar, borderTopColor: t.line, paddingBottom: insets.bottom }]}>
+      {state.routes.map((r, i) => {
+        const opts = descriptors[r.key]?.options;
+        if (opts?.href === null) return null;
+        const on = state.index === i;
+        const icon = r.name === 'index' ? (opts?.title === 'Daromad' ? 'chart' : 'home') : TAB_ICONS[r.name] ?? 'home';
+        return (
+          <Pressable
+            key={r.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => {
+              const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+              if (!on && !ev.defaultPrevented) navigateToTab(r.key);
+            }}
+            style={bar.item}
+          >
+            <View style={[bar.pill, on && { backgroundColor: t.primary }]}>
+              <Icon n={icon} size={on ? 20 : 22} color={on ? t.onPrimary : t.muted} filled={on} />
+            </View>
+            <Text numberOfLines={1} style={[bar.label, { color: on ? t.text : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{opts?.title ?? r.name}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const TAB_ICONS: Record<string, string> = { taxi: 'map', carpool: 'carpool', requests: 'requests', vehicles: 'vehicles', profile: 'profile' };
+
+const bar = StyleSheet.create({
+  bar: { flexDirection: 'row', borderTopWidth: 1, paddingHorizontal: 6 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, height: 76 },
+  pill: { width: 52, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 11 },
+});

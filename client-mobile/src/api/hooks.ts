@@ -101,6 +101,9 @@ export type TaxiOrder = {
   passenger_rated: boolean;
   created_at: string;
   cancel_reason?: string | null;
+  tariff_name?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   driver?: {
     name: string;
     phone: string | null;
@@ -267,6 +270,32 @@ export function useNotifications() {
     queryFn: async () => {
       const r = await api<Notification[] | { items: Notification[] }>('/notifications');
       return Array.isArray(r) ? r : r.items ?? [];
+    },
+  });
+}
+
+/**
+ * Bosh sahifa: "Toshkent, Yunusobod" va "3 daqiqada yetib keladi" uchun — ruxsat SO'RAMAYDI
+ * (ruxsat berilmagan bo'lsa yoki joylashuv noma'lum bo'lsa — null; taksi ekrani o'zi so'raydi).
+ */
+export type HereInfo = { place: string | null; eta_min: number | null; cars: number };
+export function useHere() {
+  return useQuery({
+    queryKey: ['here'],
+    staleTime: 60_000,
+    queryFn: async (): Promise<HereInfo | null> => {
+      const Location = await import('expo-location');
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted') return null;
+      const last = await Location.getLastKnownPositionAsync();
+      if (!last) return null;
+      const p = { lat: last.coords.latitude, lng: last.coords.longitude };
+      const [near, geo] = await Promise.all([
+        api<NearbyCars>('/drivers/nearby', { query: p }).catch(() => null),
+        api<{ title: string | null; subtitle: string | null }>('/maps/reverse-geocode', { query: p }).catch(() => null),
+      ]);
+      const place = [geo?.subtitle?.split(',')[0], geo?.title].filter(Boolean).join(', ') || null;
+      return { place, eta_min: near?.eta_min ?? null, cars: near?.cars.length ?? 0 };
     },
   });
 }

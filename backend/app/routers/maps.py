@@ -5,7 +5,7 @@ from app.database import get_db
 from app.schemas.order import RouteEstimateRequest
 from app.security import rate_limit
 from app.services import yandex_service
-from app.services.pricing_service import estimate_price
+from app.services.pricing_service import calculate_price, list_tariffs, tariff_public
 
 # Yandex kunlik limitini himoya qilish: umumiy va qidiruv uchun alohida cheklov
 router = APIRouter(prefix="/maps", tags=["maps"], dependencies=[Depends(rate_limit("maps", 120, 60))])
@@ -82,11 +82,10 @@ async def estimate(body: RouteEstimateRequest, user=Depends(get_current_user), c
     route = await yandex_service.resolve_route(
         body.from_lat, body.from_lng, body.to_lat, body.to_lng, body.distance_km, body.duration_min,
     )
-    try:
-        price, _ = await estimate_price(conn, route["distance_km"], route["duration_min"])
-    except ValueError:
-        price = None
-    return {**route, "price": price}
+    # Har bir faol tarif narxi; `price` — standart (birinchi) tarif narxi (Web App mosligi uchun)
+    tariffs = [tariff_public(t, calculate_price(route["distance_km"], route["duration_min"], t))
+               for t in await list_tariffs(conn)]
+    return {**route, "price": tariffs[0]["price"] if tariffs else None, "tariffs": tariffs}
 
 
 # ── "Chortoq" ilovasi uchun xarita (WebView): kalit serverda qoladi, ilova faqat buyruq/hodisa almashadi ──
@@ -97,13 +96,19 @@ _EMBED = """<!doctype html><html><head><meta charset="utf-8">
 [class*="copyright"]{transform:scale(.8);transform-origin:right bottom;opacity:.7}</style>
 <script src="https://api-maps.yandex.ru/2.1/?lang=uz_UZ&load=package.standard&apikey=__KEY__"></script></head>
 <body><div id="m"></div><script>
-var RN=window.ReactNativeWebView, map=null, marks={}, route=null, moving=false;
+var RN=window.ReactNativeWebView, map=null, marks={}, route=null, moving=false, MB=0;
+// MB — pastki varaq balandligi (px): "markaz" varaq ustidagi ko'rinadigan qismning o'rtasi hisoblanadi
+function shift(p,z,dy){ var pr=map.options.get('projection'), g=pr.toGlobalPixels(p,z); return pr.fromGlobalPixels([g[0],g[1]+dy],z); }
+function visCenter(){ return MB ? shift(map.getCenter(),map.getZoom(),-MB/2) : map.getCenter(); }
 function send(o){ try{ RN && RN.postMessage(JSON.stringify(o)); }catch(e){} }
 var PRESET={pickup:'islands#greenCircleDotIcon',dropoff:'islands#redCircleDotIcon',driver:'islands#blueAutoCircleIcon',
   car:'islands#blackAutoCircleIcon',point:'islands#violetCircleDotIcon'};
 window.csCmd=function(c){ if(!map) return;
-  if(c.t==='center'){ c.animate===false ? map.setCenter([c.lat,c.lng], c.zoom||map.getZoom())
-      : map.panTo([c.lat,c.lng],{duration:350}).then(function(){ if(c.zoom) map.setZoom(c.zoom,{duration:200}); }); }
+  if(c.t==='center'){ var z=c.zoom||map.getZoom(), p=[c.lat,c.lng]; if(MB) p=shift(p,z,MB/2);
+      if(c.animate===false || !MB) { c.animate===false ? map.setCenter(p,z)
+        : map.panTo(p,{duration:350}).then(function(){ if(c.zoom) map.setZoom(c.zoom,{duration:200}); }); }
+      else map.setCenter(p,z,{duration:350}); }
+  else if(c.t==='margin'){ var keepC=visCenter(); MB=c.bottom||0; map.setCenter(shift(keepC,map.getZoom(),MB/2)); }
   else if(c.t==='markers'){ var keep={};
     (c.items||[]).forEach(function(m){ keep[m.id]=1;
       if(marks[m.id]){ marks[m.id].geometry.setCoordinates([m.lat,m.lng]); }
@@ -117,7 +122,7 @@ window.csCmd=function(c){ if(!map) return;
 if(!window.ymaps){ send({t:'error'}); } else ymaps.ready(function(){
   map=new ymaps.Map('m',{center:[__LAT__,__LNG__],zoom:16,controls:[]},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
   map.events.add('actionbegin',function(){ if(!moving){ moving=true; send({t:'move'}); } });
-  map.events.add('actionend',function(){ moving=false; var c=map.getCenter(); send({t:'center',lat:c[0],lng:c[1]}); });
+  map.events.add('actionend',function(){ moving=false; var c=visCenter(); send({t:'center',lat:c[0],lng:c[1]}); });
   map.events.add('click',function(e){ var c=e.get('coords'); send({t:'click',lat:c[0],lng:c[1]}); });
   send({t:'ready'});
 });

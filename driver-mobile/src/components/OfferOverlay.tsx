@@ -2,17 +2,23 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, Vibration, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api, ApiError } from '../api/client';
 import { qk } from '../api/hooks';
 import { useOffer, type Offer } from '../store/offer';
-import { font, radius, useTheme } from '../theme';
-import { Button, T, money } from './ui';
+import { font, useTheme } from '../theme';
+import { Button, Icon, RouteCard, T, money } from './ui';
 
-const PAYMENT: Record<string, string> = { cash: 'Naqd', click: 'Click', payme: 'Payme', telegram: 'Telegram' };
+const PAYMENT: Record<string, string> = { cash: 'Naqd pul', click: 'Click', payme: 'Payme', telegram: 'Telegram' };
+const R = 28;
+const CIRC = 2 * Math.PI * R;
+const fmtKm = (v: number) => `${v.toFixed(1).replace('.', ',')} km`;
+// Shahar ichida ~25 km/soat, yo'l to'g'ri chiziqdan ~1,4 marta uzun
+const etaMin = (k: number) => Math.max(1, Math.round((k * 1.4) / 25 * 60));
 
-/** Kiruvchi taksi buyurtmasi: to'liq ekran, taymer, tebranish. Qabul/rad — REST (atomar qabul backend'da). */
+/** Kiruvchi taksi buyurtmasi — dizayndagi xarita ustidagi karta: narx, taymer halqasi, yo'nalish. Qabul/o'tkazish — REST. */
 export function OfferOverlay() {
   const offer = useOffer((s) => s.offer);
   // key: har yangi taklifda ichki holat (taymer, xabar) noldan boshlanadi
@@ -72,52 +78,64 @@ function OfferBody({ offer }: { offer: Offer & { expiresAt: number } }) {
   };
 
   const total = offer.timeout || 15;
+  const toPickup = offer.distance_to_pickup_km;
   return (
-    <Modal visible animationType="slide" statusBarTranslucent onRequestClose={reject}>
-      <SafeAreaView style={[s.wrap, { backgroundColor: t.hero }]}>
-        <View style={s.top}>
-          <Text style={s.kicker}>Yangi buyurtma</Text>
-          <Text style={s.price}>{money(offer.price)}</Text>
-          <Text style={s.meta}>
-            {[`${Number(offer.distance_km).toFixed(1)} km`, offer.duration_min ? `~${offer.duration_min} daq` : null,
-              PAYMENT[offer.payment_method] ?? offer.payment_method, `★ ${Number(offer.passenger_rating).toFixed(1)}`]
-              .filter(Boolean).join(' · ')}
-          </Text>
-          <View style={s.timer}>
-            <View style={[s.timerFill, { width: `${(left / total) * 100}%` }]} />
+    <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={reject}>
+      <View style={s.backdrop}>
+        <SafeAreaView edges={['bottom']} style={{ padding: 12 }}>
+          <View style={[s.card, { backgroundColor: t.card }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ gap: 4, flex: 1 }}>
+                <View style={[s.chip, { backgroundColor: t.primary }]}><Text style={[s.chipText, { color: t.onPrimary }]}>YANGI BUYURTMA</Text></View>
+                <Text style={[s.price, { color: t.text }]}>{money(offer.price)}</Text>
+                <Text style={[s.meta, { color: t.muted }]}>
+                  {[offer.tariff_name, PAYMENT[offer.payment_method] ?? offer.payment_method].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              <View style={s.ring} accessibilityLabel={`Qabul qilish uchun ${left} soniya qoldi`}>
+                <Svg width={64} height={64} viewBox="0 0 64 64" style={StyleSheet.absoluteFill}>
+                  <Circle cx={32} cy={32} r={R} fill="none" stroke={t.fill} strokeWidth={6} />
+                  <Circle cx={32} cy={32} r={R} fill="none" stroke={t.ink} strokeWidth={6} strokeLinecap="round"
+                    strokeDasharray={`${CIRC}`} strokeDashoffset={CIRC * (1 - left / total)} transform="rotate(-90 32 32)" />
+                </Svg>
+                <Text style={[s.left, { color: t.text }]}>{left}</Text>
+              </View>
+            </View>
+
+            <RouteCard
+              from={offer.pickup.address}
+              fromSub={toPickup != null ? `Sizdan ${fmtKm(Number(toPickup))} · ${etaMin(Number(toPickup))} daq` : undefined}
+              to={offer.dropoff.address}
+              toSub={`Safar ${fmtKm(Number(offer.distance_km))}${offer.duration_min ? ` · ${offer.duration_min} daq` : ''}`}
+            />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon n="star" filled size={16} color={t.muted} />
+              <Text style={[s.meta, { color: t.muted }]}>Yo‘lovchi reytingi {Number(offer.passenger_rating).toFixed(1).replace('.', ',')}</Text>
+            </View>
+
+            {note ? <T color={t.redInk}>{note}</T> : null}
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Button title="O‘tkazish" kind="secondary" loading={busy === 'reject'} disabled={!!busy} onPress={reject}
+                style={{ width: 120, height: 60, borderRadius: 18 }} />
+              <Button title="Qabul qilish" loading={busy === 'accept'} disabled={!!busy || !!note} onPress={accept}
+                style={{ flex: 1, height: 60, borderRadius: 18 }} />
+            </View>
           </View>
-          <Text style={s.left}>{left} s</Text>
-        </View>
-        <View style={[s.sheet, { backgroundColor: t.bg }]}>
-          <View style={{ gap: 4 }}>
-            <T kind="label">Qayerdan</T>
-            <T kind="h2">{offer.pickup.address}</T>
-            {offer.distance_to_pickup_km != null ? (
-              <T kind="muted">Sizdan {Number(offer.distance_to_pickup_km).toFixed(1)} km</T>
-            ) : null}
-          </View>
-          <View style={{ gap: 4 }}>
-            <T kind="label">Qayerga</T>
-            <T kind="h2">{offer.dropoff.address}</T>
-          </View>
-          {note ? <T color={t.redInk}>{note}</T> : null}
-          <View style={{ flex: 1 }} />
-          <Button title="Qabul qilish" icon="check" loading={busy === 'accept'} disabled={!!busy || !!note} onPress={accept} style={{ height: 60 }} />
-          <Button title="Rad etish" kind="danger" loading={busy === 'reject'} disabled={!!busy} onPress={reject} />
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { flex: 1 },
-  top: { padding: 24, gap: 6, alignItems: 'center' },
-  kicker: { color: 'rgba(255,255,255,0.8)', fontFamily: font.bold, fontSize: 15, textTransform: 'uppercase', letterSpacing: 1 },
-  price: { color: '#fff', fontFamily: font.heavy, fontSize: 40 },
-  meta: { color: 'rgba(255,255,255,0.85)', fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
-  timer: { alignSelf: 'stretch', height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', marginTop: 14, overflow: 'hidden' },
-  timerFill: { height: 8, borderRadius: 4, backgroundColor: '#fff' },
-  left: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
-  sheet: { flex: 1, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 24, gap: 18 },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.25)' },
+  card: { borderRadius: 28, padding: 20, gap: 16, elevation: 16, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 32 },
+  chip: { alignSelf: 'flex-start', height: 26, paddingHorizontal: 10, borderRadius: 13, justifyContent: 'center' },
+  chipText: { fontFamily: font.heavy, fontSize: 12, letterSpacing: 0.5 },
+  price: { fontFamily: font.heavy, fontSize: 36, letterSpacing: -1.1 },
+  meta: { fontFamily: font.medium, fontSize: 14 },
+  ring: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
+  left: { fontFamily: font.heavy, fontSize: 20 },
 });

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.database import get_db
 from app.auth import get_admin_user, hash_password
-from app.schemas.payment import TariffUpdateRequest
+from app.schemas.payment import TariffIn, TariffUpdateRequest
 from app.services.notification_service import send_to_driver
 import asyncpg
 
@@ -31,11 +31,13 @@ async def dashboard(admin=Depends(get_admin_user), conn: asyncpg.Connection = De
 @router.get("/drivers")
 async def list_drivers(status: str | None = None, page: int = 1, limit: int = 20,
                        admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
-    where = "WHERE status=$3" if status else ""
+    where = "WHERE d.status=$3" if status else ""
     args = [limit, (page - 1) * limit]
     if status:
         args.append(status)
-    rows = await conn.fetch(f"SELECT * FROM drivers {where} ORDER BY created_at DESC LIMIT $1 OFFSET $2", *args)
+    rows = await conn.fetch(
+        f"""SELECT d.*, t.name AS tariff_name FROM drivers d LEFT JOIN tariffs t ON t.id = d.tariff_id
+            {where} ORDER BY d.created_at DESC LIMIT $1 OFFSET $2""", *args)
     total = await conn.fetchval(f"SELECT COUNT(*) FROM drivers {where}", *([status] if status else []))
     return {"drivers": [serialize_driver(r) for r in rows], "total": total, "page": page}
 
@@ -144,20 +146,70 @@ async def list_payments(admin=Depends(get_admin_user), conn: asyncpg.Connection 
     return [dict(r) for r in rows]
 
 
+_TARIFF_COLS = ("name", "base_fare", "per_km_price", "per_min_price", "min_fare", "night_multiplier",
+                "seats", "level", "sort_order", "description", "is_active")
+
+
 @router.get("/tariffs")
 async def get_tariffs(admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
-    rows = await conn.fetch("SELECT * FROM tariffs ORDER BY created_at DESC")
+    """Taksi tarif sinflari: faollari avval (mijozga ko'rsatish tartibida), har biriga biriktirilgan haydovchilar soni."""
+    rows = await conn.fetch(
+        """SELECT t.*, (SELECT COUNT(*) FROM drivers d WHERE d.tariff_id = t.id) AS drivers_count
+           FROM tariffs t WHERE t.code IS NOT NULL OR t.is_active
+           ORDER BY t.is_active DESC, t.sort_order, t.level, t.id""")
     return [dict(r) for r in rows]
+
+
+@router.post("/tariffs", status_code=201)
+async def create_tariff(body: TariffIn, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    import re
+    code = re.sub(r"[^a-z0-9]+", "-", body.name.lower()).strip("-") or "tarif"
+    if await conn.fetchval("SELECT 1 FROM tariffs WHERE code=$1", code):
+        raise HTTPException(409, "Bu nomli tarif allaqachon bor")
+    vals = [getattr(body, c) for c in _TARIFF_COLS]
+    row = await conn.fetchrow(
+        f"INSERT INTO tariffs(code,{','.join(_TARIFF_COLS)}) VALUES($1,{','.join(f'${i + 2}' for i in range(len(vals)))}) RETURNING *",
+        code, *vals)
+    return dict(row)
+
+
+@router.put("/tariffs/{tariff_id}")
+async def edit_tariff(tariff_id: int, body: TariffIn, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    vals = [getattr(body, c) for c in _TARIFF_COLS]
+    if not body.is_active and await conn.fetchval(
+            "SELECT COUNT(*) FROM tariffs WHERE is_active AND id<>$1", tariff_id) == 0:
+        raise HTTPException(400, "Kamida bitta tarif faol bo'lishi kerak")
+    row = await conn.fetchrow(
+        f"UPDATE tariffs SET {', '.join(f'{c}=${i + 2}' for i, c in enumerate(_TARIFF_COLS))} WHERE id=$1 RETURNING *",
+        tariff_id, *vals)
+    if not row:
+        raise HTTPException(404, "Tarif topilmadi")
+    return dict(row)
 
 
 @router.put("/tariffs")
 async def update_tariff(body: TariffUpdateRequest, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
-    await conn.execute("UPDATE tariffs SET is_active=false WHERE is_active=true")
+    """Eski API (bitta tarif): standart tarif narxlarini yangilaydi."""
     row = await conn.fetchrow(
-        """INSERT INTO tariffs(name,base_fare,per_km_price,per_min_price,min_fare,night_multiplier,is_active)
-           VALUES('Standard',$1,$2,$3,$4,$5,true) RETURNING *""",
+        """UPDATE tariffs SET base_fare=$1, per_km_price=$2, per_min_price=$3, min_fare=$4, night_multiplier=$5
+           WHERE id = (SELECT id FROM tariffs WHERE is_active ORDER BY sort_order, level, id LIMIT 1) RETURNING *""",
         body.base_fare, body.per_km_price, body.per_min_price, body.min_fare, body.night_multiplier,
     )
+    if not row:
+        raise HTTPException(404, "Faol tarif yo'q")
+    return dict(row)
+
+
+@router.put("/drivers/{driver_id}/tariff")
+async def set_driver_tariff(driver_id: int, body: dict, admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
+    """Haydovchi mashinasining tarif sinfi (null — Ekonom). Buyurtmalar shu sinf va undan pastiga keladi."""
+    tariff_id = body.get("tariff_id")
+    if tariff_id is not None and not await conn.fetchval("SELECT 1 FROM tariffs WHERE id=$1", int(tariff_id)):
+        raise HTTPException(404, "Tarif topilmadi")
+    row = await conn.fetchrow("UPDATE drivers SET tariff_id=$2, updated_at=NOW() WHERE id=$1 RETURNING id, tariff_id",
+                              driver_id, tariff_id)
+    if not row:
+        raise HTTPException(404, "Haydovchi topilmadi")
     return dict(row)
 
 

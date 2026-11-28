@@ -5,7 +5,7 @@ from app.schemas.order import CreateOrderRequest, CancelOrderRequest
 from app.services.order_service import create_order, accept_order, complete_order, reject_offer, close_offers
 from app.services import push
 from app.services.yandex_service import resolve_route
-from app.services.pricing_service import estimate_price
+from app.services.pricing_service import estimate_price, tariff_public
 from app.socket_manager import sio
 import asyncpg
 
@@ -31,7 +31,9 @@ async def create(body: CreateOrderRequest, user=Depends(get_current_user), conn:
     route = await resolve_route(body.pickup.lat, body.pickup.lng, body.dropoff.lat, body.dropoff.lng,
                                 body.road_distance_km, body.road_duration_min)
     try:
-        price, _ = await estimate_price(conn, route["distance_km"], route["duration_min"])
+        price, tariff = await estimate_price(conn, route["distance_km"], route["duration_min"], body.tariff_id)
+    except LookupError as e:
+        raise HTTPException(400, str(e))
     except ValueError:
         raise HTTPException(503, "Taksi tarifi sozlanmagan. Admin panel → Tarif bo'limida tarifni saqlang.")
     order = await create_order(
@@ -43,8 +45,9 @@ async def create(body: CreateOrderRequest, user=Depends(get_current_user), conn:
         duration_min=route["duration_min"],
         price=price,
         payment_method=body.payment_method,
+        tariff=tariff,
     )
-    return {**order, "estimated_price": price, "route": route}
+    return {**order, "estimated_price": price, "route": route, "tariff": tariff_public(tariff)}
 
 
 @router.get("/active")
@@ -100,6 +103,8 @@ async def _with_driver(conn: asyncpg.Connection, row) -> dict:
     data.pop("pickup_location", None)
     data.pop("dropoff_location", None)
     data["driver"] = None
+    data["tariff_name"] = (await conn.fetchval("SELECT name FROM tariffs WHERE id=$1", row["tariff_id"])
+                           if row.get("tariff_id") else None)
     if row["driver_id"]:
         d = await conn.fetchrow(
             """SELECT first_name, last_name, phone, car_model, car_number, car_color, rating,

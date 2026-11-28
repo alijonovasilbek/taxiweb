@@ -6,23 +6,24 @@ from app.services.bot_retry import with_retry
 from app.services.notification_service import send_to_passenger
 
 async def create_order(conn: asyncpg.Connection, passenger_id: int, pickup: dict, dropoff: dict,
-                       distance_km: float, duration_min: int, price: float, payment_method: str) -> dict:
+                       distance_km: float, duration_min: int, price: float, payment_method: str,
+                       tariff: dict | None = None) -> dict:
     row = await conn.fetchrow(
         """INSERT INTO orders(
                passenger_id, pickup_address, pickup_lat, pickup_lng, pickup_location,
                dropoff_address, dropoff_lat, dropoff_lng, dropoff_location,
-               distance_km, duration_min, estimated_price, payment_method, status
+               distance_km, duration_min, estimated_price, payment_method, status, tariff_id
            ) VALUES(
                $1, $2, $3, $4, ST_MakePoint($5, $6)::geography,
                $7, $8, $9, ST_MakePoint($10, $11)::geography,
-               $12, $13, $14, $15, 'searching'
+               $12, $13, $14, $15, 'searching', $16
            ) RETURNING *""",
         passenger_id,
         pickup["address"], pickup["lat"], pickup["lng"],
         pickup["lng"], pickup["lat"],
         dropoff["address"], dropoff["lat"], dropoff["lng"],
         dropoff["lng"], dropoff["lat"],
-        distance_km, duration_min, price, payment_method,
+        distance_km, duration_min, price, payment_method, tariff["id"] if tariff else None,
     )
     order = dict(row)
     from app.tasks import spawn
@@ -69,9 +70,12 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
     await asyncio.sleep(0)
     order_id = order["id"]
     async with pool.acquire() as c:
-        drivers = await find_drivers_expanding(c, order["pickup_lat"], order["pickup_lng"], order["passenger_id"])
+        tariff = await c.fetchrow("SELECT name, level, seats FROM tariffs WHERE id=$1", order["tariff_id"])             if order.get("tariff_id") else None
+        drivers = await find_drivers_expanding(
+            c, order["pickup_lat"], order["pickup_lng"], order["passenger_id"],
+            tariff["level"] if tariff else 1, tariff["seats"] if tariff else 1)
         passenger = await c.fetchrow("SELECT * FROM users WHERE id=$1", order["passenger_id"])
-    order_data = _order_payload(order, passenger)
+    order_data = {**_order_payload(order, passenger), "tariff_name": tariff["name"] if tariff else None}
     ev = _offer_events.setdefault(order_id, asyncio.Event())
     try:
         for driver in drivers[: settings.max_offer_drivers]:

@@ -1,3 +1,4 @@
+from datetime import timedelta
 import os
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
 from app.database import get_db
@@ -60,7 +61,8 @@ async def get_me(user=Depends(get_current_user), conn: asyncpg.Connection = Depe
     row = await get_driver_row(conn, user)
     if not row:
         raise HTTPException(404, "Driver not found")
-    return serialize_driver(row)
+    tariff = await conn.fetchval("SELECT name FROM tariffs WHERE id=$1", row["tariff_id"]) if row["tariff_id"] else None
+    return {**serialize_driver(row), "tariff_name": tariff or "Ekonom"}
 
 
 @router.put("/me/status")
@@ -82,11 +84,34 @@ async def get_earnings(user=Depends(get_current_user), conn: asyncpg.Connection 
     driver = await get_driver_row(conn, user)
     if not driver:
         raise HTTPException(404, "Driver not found")
-    today = await conn.fetchrow(
-        "SELECT COALESCE(SUM(final_price),0) as total FROM orders WHERE driver_id=$1 AND status='completed' AND completed_at::date=CURRENT_DATE",
-        driver["id"],
-    )
-    return {"total_earnings": float(driver["total_earnings"]), "total_rides": driver["total_rides"], "today_earnings": float(today["total"])}
+    did = driver["id"]
+    # Oxirgi 7 kun (bugun bilan): har kunning daromadi va safarlari — "Daromad" ekranidagi ustunlar
+    days = {r["d"]: r for r in await conn.fetch(
+        """SELECT completed_at::date AS d, COALESCE(SUM(final_price),0) AS total, COUNT(*) AS rides
+           FROM orders WHERE driver_id=$1 AND status='completed' AND completed_at >= CURRENT_DATE - 6
+           GROUP BY 1""", did)}
+    today = await conn.fetchval("SELECT CURRENT_DATE")
+    week = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        r = days.get(d)
+        week.append({"date": d.isoformat(), "weekday": d.weekday(), "total": float(r["total"]) if r else 0.0,
+                     "rides": r["rides"] if r else 0})
+    # Liniyada bo'lgan vaqt: bugun joylashuv kelgan alohida daqiqalar soni (ilova onlayn paytda har ~10 s yuboradi)
+    online_min = await conn.fetchval(
+        """SELECT COUNT(DISTINCT date_trunc('minute', recorded_at)) FROM driver_location_history
+           WHERE driver_id=$1 AND recorded_at >= CURRENT_DATE""", did)
+    recent = await conn.fetch(
+        """SELECT o.id, o.pickup_address, o.dropoff_address, o.final_price, o.completed_at, o.payment_method,
+                  t.name AS tariff_name
+           FROM orders o LEFT JOIN tariffs t ON t.id = o.tariff_id
+           WHERE o.driver_id=$1 AND o.status='completed' ORDER BY o.completed_at DESC LIMIT 10""", did)
+    return {
+        "total_earnings": float(driver["total_earnings"]), "total_rides": driver["total_rides"],
+        "today_earnings": week[-1]["total"], "today_rides": week[-1]["rides"],
+        "online_min_today": online_min, "rating": float(driver["rating"] or 5),
+        "week": week, "recent": [dict(r) for r in recent],
+    }
 
 
 @router.get("/me/rides")

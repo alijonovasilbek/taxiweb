@@ -120,6 +120,18 @@ export default function Drivers() {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [tariffs, setTariffs] = useState([]);
+
+  useEffect(() => { api.get('/tariffs').then(({ data }) => setTariffs(data.filter((t) => t.is_active))).catch(() => {}); }, []);
+
+  // Mashina sinfi: buyurtmalar shu tarif va undan past sinfdan keladi (bo'sh — Ekonom)
+  const handleTariff = async (driver, tariffId) => {
+    setLoading(true);
+    await api.put(`/drivers/${driver.id}/tariff`, { tariff_id: tariffId ? Number(tariffId) : null })
+      .then(() => load())
+      .catch((err) => alert(err.response?.data?.detail || 'Xatolik yuz berdi'));
+    setLoading(false);
+  };
 
   const load = () => {
     const params = filter !== 'all' ? { status: filter } : {};
@@ -179,6 +191,10 @@ export default function Drivers() {
           { title: 'Telefon', key: 'phone' },
           { title: 'Mashina', render: (d) => `${d.car_model} (${d.car_color})` },
           { title: 'Raqam', render: (d) => <span className="badge gray" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{d.car_number}</span> },
+          { title: 'Tarif', render: (d) => (
+            <Select value={d.tariff_id ? String(d.tariff_id) : ''} onChange={(v) => handleTariff(d, v)} placeholder="Ekonom (standart)"
+              options={tariffs.map((t) => [String(t.id), t.name])} />
+          ) },
           { title: 'Reyting', render: (d) => <Rating value={d.rating} /> },
           { title: 'Holat', render: (d) => <StatusBadge status={d.status} /> },
           { title: 'Amallar', render: (d) => (
