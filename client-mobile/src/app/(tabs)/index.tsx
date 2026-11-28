@@ -3,6 +3,7 @@
  * Po'puti / Yuk tashish plitkalari, Maxsus texnika; qo'shimcha — saqlangan va oxirgi manzillar (bir bosishda taksi).
  */
 import { useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -13,7 +14,7 @@ import {
   recentPlaces, useActiveOrder, useBookings, useCatalog, useMe, useMyRequests, useRides, useUnread, type SavedPlace,
 } from '../../api/hooks';
 import { MapWarmup } from '../../components/MapView';
-import { Badge, Icon, T } from '../../components/ui';
+import { Badge, Glass, GlassIcon, Icon, T } from '../../components/ui';
 import { BOOKING_STATUS, fmtDateTime, ORDER_STATUS, REQUEST_STATUS } from '../../lib/format';
 import { font, useTheme } from '../../theme';
 
@@ -68,8 +69,8 @@ export default function Home() {
               <View style={s.logo}><Text style={[s.logoText, { color: t.hHero }]}>C</Text></View>
               <Text style={s.brand}>CHORTOQ SERVICES</Text>
             </View>
-            <Pressable onPress={() => router.push('/notifications')} style={s.bell} hitSlop={8}>
-              <Icon n="bell" size={19} color="#fff" />
+            <Pressable onPress={() => router.push('/notifications')} hitSlop={8}>
+              <Glass onColor rounded={21} style={s.bell}><Icon n="bell" size={20} color="#fff" /></Glass>
               {unread.data?.unread ? (
                 <View style={s.dot}><Text style={s.dotText}>{unread.data.unread > 99 ? '99+' : unread.data.unread}</Text></View>
               ) : null}
@@ -85,7 +86,7 @@ export default function Home() {
         <View style={s.content}>
           {order ? (
             <Pressable onPress={() => goTaxi()} style={[s.active, { backgroundColor: t.card, borderLeftColor: t.primary }]}>
-              <View style={[s.activeIc, { backgroundColor: t.taxi }]}><Icon n="taxi" size={20} color="#141414" /></View>
+              <GlassIcon n="taxi" size={40} color={t.taxi} ink="#141414" iconSize={21} />
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <T style={{ fontFamily: font.bold }}>Faol taksi</T>
@@ -99,8 +100,13 @@ export default function Home() {
 
           {on('taxi') ? (
             <Pressable onPress={() => goTaxi()} style={({ pressed }) => [s.taxi, { backgroundColor: t.taxi }, pressed && s.pressed]}>
-              <View style={s.taxiArt} pointerEvents="none"><Icon n="taxi" size={170} color={t.taxiArt} stroke={1.5} /></View>
-              <View style={s.taxiGo}><Icon n="arrowUR" size={21} color={t.taxi} stroke={2.6} /></View>
+              <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)', 'rgba(120,80,0,0.08)']}
+                locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+              <View style={s.taxiArt} pointerEvents="none"><Icon n="taxi" size={160} color={t.taxiArt} /></View>
+              <View style={s.taxiGo}>
+                <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']} style={StyleSheet.absoluteFill} />
+                <Icon n="arrowUR" size={22} color={t.taxi} />
+              </View>
               <Text style={s.taxiTitle}>Taksi</Text>
               <Text style={s.taxiSub}>Qayerga boramiz?</Text>
             </Pressable>
@@ -119,11 +125,11 @@ export default function Home() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {on('carpool') ? (
               <Tile title="Po'puti" text="Doimiy qatnov, bo'sh o'rinlarni baham ko'rish" icon="carpool"
-                bg={t.tileGreen} ic={t.tileGreenIc} icBg={t.tileGreenIcBg} border={t.tileBorder} onPress={() => router.push('/carpool')} />
+                bg={t.tileGreen} ic={t.tileGreenIc} border={t.tileBorder} onPress={() => router.push('/carpool')} />
             ) : null}
             {on('cargo') ? (
               <Tile title="Yuk tashish" text="Labo, Gazel, Isuzu va boshqalar bilan yuk tashish" icon="truck"
-                bg={t.tileBlue} ic={t.tileBlueIc} icBg={t.tileBlueIcBg} border={t.tileBorder}
+                bg={t.tileBlue} ic={t.tileBlueIc} border={t.tileBorder}
                 onPress={() => router.push({ pathname: '/request/new', params: { service: 'cargo' } })} />
             ) : null}
           </View>
@@ -131,12 +137,12 @@ export default function Home() {
           {on('equipment') ? (
             <Pressable onPress={() => router.push({ pathname: '/request/new', params: { service: 'equipment' } })}
               style={({ pressed }) => [s.equip, { backgroundColor: t.equip, borderColor: t.tileBorder }, pressed && s.pressed]}>
-              <View style={[s.equipIc, { backgroundColor: t.equipIcBg }]}><Icon n="equipment" size={21} color={t.equipIc} /></View>
+              <Glass onColor rounded={15} style={s.equipIc}><Icon n="equipment" size={24} color={t.equipIc} /></Glass>
               <View style={{ flex: 1 }}>
                 <Text style={[s.equipTitle, { color: t.equipText }]}>Maxsus texnika</Text>
                 <Text style={[s.equipSub, { color: t.equipSub }]}>Ekskavator va boshqa texnikalar</Text>
               </View>
-              <Icon n="arrowUR" size={20} color={t.equipIc} stroke={2.4} />
+              <Icon n="arrowUR" size={21} color={t.equipIc} />
             </Pressable>
           ) : null}
 
@@ -173,20 +179,24 @@ export default function Home() {
 function PlaceChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
   const t = useTheme();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.chip, { backgroundColor: t.card, borderColor: t.line }, pressed && { opacity: 0.7 }]}>
-      <Icon n={icon} size={16} color={t.text} />
-      <Text style={[s.chipText, { color: t.text }]} numberOfLines={1}>{label}</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
+      <Glass strong rounded={22} style={[s.chip, { borderColor: t.line }]}>
+        <Icon n={icon} size={17} color={t.primary} />
+        <Text style={[s.chipText, { color: t.text }]} numberOfLines={1}>{label}</Text>
+      </Glass>
     </Pressable>
   );
 }
 
-function Tile({ title, text, icon, bg, ic, icBg, border, onPress }: {
-  title: string; text: string; icon: string; bg: string; ic: string; icBg: string; border: string; onPress: () => void;
+function Tile({ title, text, icon, bg, ic, border, onPress }: {
+  title: string; text: string; icon: string; bg: string; ic: string; border: string; onPress: () => void;
 }) {
   const t = useTheme();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [s.tile, { backgroundColor: bg, borderColor: border }, pressed && s.pressed]}>
-      <View style={[s.tileIc, { backgroundColor: icBg }]}><Icon n={icon} size={19} color={ic} stroke={2.2} /></View>
+      <LinearGradient pointerEvents="none" colors={[t.scheme === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']} locations={[0, 0.6]}
+        style={StyleSheet.absoluteFill} />
+      <GlassIcon n={icon} size={44} color={ic} iconSize={23} />
       <View style={{ flex: 1 }} />
       <Text style={[s.tileTitle, { color: t.text }]}>{title}</Text>
       <Text style={[s.tileText, { color: t.muted }]} numberOfLines={3}>{text}</Text>
@@ -200,7 +210,7 @@ const s = StyleSheet.create({
   logo: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   logoText: { fontFamily: font.heavy, fontSize: 19 },
   brand: { color: '#fff', fontFamily: font.heavy, fontSize: 13, letterSpacing: 1.3 },
-  bell: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  bell: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   dot: { position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ffc72c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   dotText: { color: '#141414', fontFamily: font.bold, fontSize: 10 },
   hello: { color: '#fff', fontFamily: font.heavy, fontSize: 31, letterSpacing: -0.6, marginTop: 22, marginBottom: 16 },
@@ -209,20 +219,18 @@ const s = StyleSheet.create({
   content: { marginTop: -34, paddingHorizontal: 16, gap: 12 },
   pressed: { transform: [{ scale: 0.98 }] },
   active: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, padding: 14, borderLeftWidth: 4, elevation: 3 },
-  activeIc: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   taxi: { borderRadius: 24, minHeight: 176, padding: 20, paddingBottom: 18, justifyContent: 'flex-end', overflow: 'hidden', elevation: 6, shadowColor: '#785000' },
   taxiArt: { position: 'absolute', right: -14, bottom: -40 },
-  taxiGo: { position: 'absolute', top: 18, right: 18, width: 44, height: 44, borderRadius: 22, backgroundColor: '#141414', alignItems: 'center', justifyContent: 'center' },
+  taxiGo: { position: 'absolute', top: 18, right: 18, width: 46, height: 46, borderRadius: 23, backgroundColor: '#141414', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
   taxiTitle: { color: '#141414', fontFamily: font.heavy, fontSize: 36, letterSpacing: -0.7, position: 'absolute', top: 18, left: 20 },
   taxiSub: { color: '#141414', fontFamily: font.semibold, fontSize: 15 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 22, borderWidth: 1, paddingHorizontal: 14, height: 42, maxWidth: 220 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, height: 42, maxWidth: 220 },
   chipText: { fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
-  tile: { flex: 1, borderRadius: 22, padding: 16, minHeight: 156, borderWidth: 1 },
-  tileIc: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  tile: { flex: 1, borderRadius: 22, padding: 16, minHeight: 156, borderWidth: 1, overflow: 'hidden' },
   tileTitle: { fontFamily: font.heavy, fontSize: 18, marginTop: 18 },
   tileText: { fontFamily: font.medium, fontSize: 13, lineHeight: 17, marginTop: 4 },
-  equip: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 22, padding: 18, borderWidth: 1 },
-  equipIc: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  equip: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 22, padding: 18, borderWidth: 1, overflow: 'hidden' },
+  equipIc: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   equipTitle: { fontFamily: font.heavy, fontSize: 17 },
   equipSub: { fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   item: { borderRadius: 18, padding: 14, gap: 4 },

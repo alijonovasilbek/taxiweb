@@ -2,12 +2,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, AppState, type ColorValue } from 'react-native';
+import { Alert, AppState, StyleSheet, type ColorValue } from 'react-native';
 
 import { qk, useProviderHome } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
 import { OfferOverlay } from '../../components/OfferOverlay';
-import { Icon, money } from '../../components/ui';
+import { Glass, Icon, money } from '../../components/ui';
 import { getItem, setItem } from '../../lib/storage';
 import { useAuth } from '../../store/auth';
 import { useOffer, type Offer } from '../../store/offer';
@@ -89,7 +89,9 @@ export default function TabsLayout() {
   const tab = (title: string, icon: string, visible = true) => ({
     title,
     href: visible ? undefined : null,
-    tabBarIcon: ({ color }: { color: ColorValue }) => <Icon n={icon} size={23} color={String(color)} />,
+    tabBarIcon: ({ color, focused }: { color: ColorValue; focused: boolean }) => (
+      <Icon n={icon} size={24} color={String(color)} outline={!focused} />
+    ),
   });
 
   return (
@@ -99,7 +101,9 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarActiveTintColor: t.primary,
           tabBarInactiveTintColor: t.faint,
-          tabBarStyle: { backgroundColor: t.tabBar, borderTopColor: t.line },
+          tabBarStyle: { backgroundColor: 'transparent', borderTopColor: t.line, elevation: 0 },
+          // Liquid glass fon (menyu ostidagi kontent ustida shaffof yuza)
+          tabBarBackground: () => <Glass strong rounded={0} style={[StyleSheet.absoluteFill, { borderWidth: 0 }]} />,
           tabBarLabelStyle: { fontFamily: font.semibold, fontSize: 11 },
           sceneStyle: { backgroundColor: t.bg },
         }}

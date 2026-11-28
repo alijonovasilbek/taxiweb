@@ -14,7 +14,7 @@ import { api } from '../api/client';
 import { qk, recentPlaces, useMe, useRides, type NearbyCars, type TaxiOrder } from '../api/hooks';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../components/MapView';
 import { PlaceSearch, type Place } from '../components/PlacePicker';
-import { ErrorNote, Icon, money, T } from '../components/ui';
+import { ErrorNote, Glass, Icon, money, T } from '../components/ui';
 import { PAYMENT } from '../lib/format';
 import { font, useTheme } from '../theme';
 
@@ -229,24 +229,26 @@ export default function TaxiBook() {
       ) : null}
 
       <SafeAreaView edges={['top']} style={s.topBar} pointerEvents="box-none">
-        <Pressable onPress={back} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
-          <Icon n="back" size={22} />
+        <Pressable onPress={back} hitSlop={8}>
+          <Glass strong rounded={23} style={s.fab}><Icon n="back" size={22} /></Glass>
         </Pressable>
         {stage === 'pickup' ? (
-          <Pressable onPress={() => setSearch('pickup')} style={[s.addrPill, { backgroundColor: t.card }]}>
+          <Pressable onPress={() => setSearch('pickup')} style={{ flex: 1 }}>
+            <Glass strong rounded={23} style={s.addrPill}>
             <View style={[s.dot, { backgroundColor: t.green }]} />
             {pin?.busy || moving ? <ActivityIndicator size="small" color={t.primary} /> : (
               <Text numberOfLines={1} style={[s.addrPillText, { color: t.text }]}>{pinAddress || 'Olib ketish joyi'}</Text>
             )}
             <Icon n="chevDown" size={16} color={t.muted} />
+            </Glass>
           </Pressable>
         ) : <View style={{ flex: 1 }} />}
         <View style={{ width: 46 }} />
       </SafeAreaView>
 
       {here && pinMode ? (
-        <Pressable onPress={() => map.current?.center(here, 17)} style={[s.fab, s.locate, { backgroundColor: t.card, bottom: (stage === 'pickup' ? 330 : 190) + insets.bottom }]}>
-          <Icon n="nav" size={20} color={t.primary} />
+        <Pressable onPress={() => map.current?.center(here, 17)} style={[s.locate, { bottom: (stage === 'pickup' ? 330 : 190) + insets.bottom }]}>
+          <Glass strong rounded={23} style={s.fab}><Icon n="nav" size={20} color={t.primary} /></Glass>
         </Pressable>
       ) : null}
 
@@ -394,9 +396,9 @@ function BigButton({ title, onPress, disabled, loading }: { title: string; onPre
 
 const s = StyleSheet.create({
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
-  fab: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  fab: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', elevation: 5 },
   locate: { position: 'absolute', right: 14 },
-  addrPill: { flex: 1, height: 46, borderRadius: 23, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, elevation: 5 },
+  addrPill: { height: 46, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, elevation: 5 },
   addrPillText: { flex: 1, fontFamily: font.bold, fontSize: 15 },
   bubble: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 6, elevation: 6 },
   bubbleText: { fontFamily: font.bold, fontSize: 14 },

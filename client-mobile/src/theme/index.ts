@@ -43,6 +43,11 @@ const light = {
   tileBorder: 'transparent',
   sheet: '#ffffff',
   shadow: 'rgba(40,10,20,0.16)',
+  // Liquid glass (shaffof yuza + yorug'lik gradienti)
+  glass: 'rgba(255,255,255,0.74)',
+  glassStrong: 'rgba(255,255,255,0.92)',
+  glassEdge: 'rgba(255,255,255,0.95)',
+  glassSheen: ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.2)', 'rgba(255,255,255,0.5)'] as readonly [string, string, string],
 };
 
 const dark: typeof light = {
@@ -74,6 +79,10 @@ const dark: typeof light = {
   tileBorder: 'rgba(255,255,255,0.07)',
   sheet: '#1c1c1e',
   shadow: 'rgba(0,0,0,0.5)',
+  glass: 'rgba(38,36,42,0.74)',
+  glassStrong: 'rgba(38,36,42,0.94)',
+  glassEdge: 'rgba(255,255,255,0.16)',
+  glassSheen: ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.07)'] as readonly [string, string, string],
 };
 
 export type Theme = typeof light;

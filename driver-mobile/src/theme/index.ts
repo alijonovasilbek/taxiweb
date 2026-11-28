@@ -30,6 +30,11 @@ const light = {
   orangeSoft: 'rgba(255,149,0,0.13)',
   accent: '#ffcc00',
   tabBar: '#ffffff',
+  // Liquid glass (shaffof yuza + yorug'lik gradienti)
+  glass: 'rgba(255,255,255,0.74)',
+  glassStrong: 'rgba(255,255,255,0.92)',
+  glassEdge: 'rgba(255,255,255,0.95)',
+  glassSheen: ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.2)', 'rgba(255,255,255,0.5)'] as readonly [string, string, string],
 };
 
 const dark: typeof light = {
@@ -51,6 +56,10 @@ const dark: typeof light = {
   redSoft: 'rgba(255,69,58,0.2)',
   orangeSoft: 'rgba(255,159,10,0.2)',
   tabBar: '#161618',
+  glass: 'rgba(38,36,42,0.74)',
+  glassStrong: 'rgba(38,36,42,0.94)',
+  glassEdge: 'rgba(255,255,255,0.16)',
+  glassSheen: ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.07)'] as readonly [string, string, string],
 };
 
 export type Theme = typeof light;

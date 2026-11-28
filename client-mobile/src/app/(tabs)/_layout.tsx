@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { qk } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
-import { Icon } from '../../components/ui';
+import { Glass, Icon } from '../../components/ui';
 import { askNotifications, notifyIfBackground } from '../../lib/notify';
 import { useAuth } from '../../store/auth';
 import { font, useTheme } from '../../theme';
@@ -84,7 +85,7 @@ function FloatingBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
   const insets = useSafeAreaInsets();
   return (
     <View pointerEvents="box-none" style={[bar.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <View style={[bar.bar, { backgroundColor: t.tabBar, borderColor: t.line, shadowColor: t.shadow }]}>
+      <Glass strong rounded={28} style={[bar.bar, { shadowColor: t.shadow }]}>
         {state.routes.map((r, i) => {
           const on = state.index === i;
           const title = descriptors[r.key]?.options.title ?? r.name;
@@ -97,21 +98,27 @@ function FloatingBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
                 const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
                 if (!on && !ev.defaultPrevented) navigateToTab(r.key);
               }}
-              style={[bar.item, on && { backgroundColor: t.hHero }]}
+              style={[bar.item, on && { backgroundColor: t.hHero, borderColor: 'rgba(255,255,255,0.35)' }]}
             >
-              <Icon n={TAB_ICONS[r.name] ?? 'home'} size={21} color={on ? '#fff' : t.muted} stroke={on ? 2.3 : 2} />
+              {on ? (
+                <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.32)', 'rgba(255,255,255,0.04)', 'rgba(0,0,0,0.12)']}
+                  locations={[0, 0.5, 1]} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} />
+              ) : null}
+              <Icon n={TAB_ICONS[r.name] ?? 'home'} size={22} color={on ? '#fff' : t.muted} outline={!on} />
               <Text numberOfLines={1} style={[bar.label, { color: on ? '#fff' : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{title}</Text>
             </Pressable>
           );
         })}
-      </View>
+      </Glass>
     </View>
   );
 }
 
 const bar = StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14 },
-  bar: { flexDirection: 'row', borderRadius: 26, borderWidth: 1, padding: 6, gap: 4, elevation: 12, shadowOpacity: 1, shadowRadius: 18 },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20, paddingVertical: 8, gap: 2 },
+  // strong (0.92) shisha: Android soyasi ostidan deyarli ko'rinmaydi
+  bar: { flexDirection: 'row', padding: 6, gap: 4, elevation: 10, shadowOpacity: 1, shadowRadius: 20 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 22, paddingVertical: 8, gap: 2, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'transparent' },
   label: { fontSize: 11 },
 });

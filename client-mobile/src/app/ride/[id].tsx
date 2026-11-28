@@ -13,7 +13,7 @@ import { ACTIVE_STATUSES, qk, useOrder, type TaxiOrder } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
 import { Input } from '../../components/form';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../../components/MapView';
-import { Badge, Button, ErrorNote, Icon, money, T } from '../../components/ui';
+import { Badge, Button, ErrorNote, Glass, Icon, money, T } from '../../components/ui';
 import { PAYMENT } from '../../lib/format';
 import { font, radius, useTheme } from '../../theme';
 
@@ -168,14 +168,14 @@ export default function Ride() {
         <MapView ref={map} initial={pickup && !Number.isNaN(pickup.lat) ? pickup : null} markers={markers}
           route={FINISHED_SET.has(status) ? null : route} />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, padding: 12 }}>
-          <Pressable onPress={leave} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
-            <Icon n="back" size={22} />
+          <Pressable onPress={leave} hitSlop={8}>
+            <Glass strong rounded={23} style={s.fab}><Icon n="back" size={22} /></Glass>
           </Pressable>
         </SafeAreaView>
         {driverLoc && active ? (
           <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, right: 0, padding: 12 }}>
-            <Pressable onPress={() => map.current?.center(driverLoc, 16)} style={[s.fab, { backgroundColor: t.card }]} hitSlop={8}>
-              <Icon n="taxi" size={21} color={t.primary} />
+            <Pressable onPress={() => map.current?.center(driverLoc, 16)} hitSlop={8}>
+              <Glass strong rounded={23} style={s.fab}><Icon n="taxi" size={21} color={t.primary} /></Glass>
             </Pressable>
           </SafeAreaView>
         ) : null}
@@ -307,7 +307,7 @@ function Finish({ order, onDone }: { order: TaxiOrder; onDone: () => void }) {
 }
 
 const s = StyleSheet.create({
-  fab: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  fab: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', elevation: 4 },
   sheet: { flex: 1, marginTop: -26, borderTopLeftRadius: 28, borderTopRightRadius: 28, elevation: 14 },
   grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 2 },
   statusIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },

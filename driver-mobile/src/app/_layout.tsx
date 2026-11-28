@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
+import * as Font from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -10,7 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAppVersion } from '../api/hooks';
 import { queryClient } from '../api/queryClient';
-import { Button, Icon, T } from '../components/ui';
+import { Button, Icon, ICON_FONTS, T } from '../components/ui';
 import { BOT_URL } from '../config';
 import { appVersion } from '../lib/device';
 // Fon GPS vazifasi modul yuklanganda ro'yxatga olinishi shart (TaskManager.defineTask — top-level)
@@ -35,7 +36,7 @@ export default function RootLayout() {
   const t = useTheme();
 
   useEffect(() => {
-    Promise.all([useAuth.getState().bootstrap(), useThemePref.getState().load()]).finally(() => SplashScreen.hide());
+    Promise.all([useAuth.getState().bootstrap(), useThemePref.getState().load(), Font.loadAsync(ICON_FONTS).catch(() => undefined)]).finally(() => SplashScreen.hide());
   }, []);
 
   // Tungi rejimda ekranlar almashganda oq "chaqnash" bo'lmasin (KAMCHILIKLAR-ANDROID #30)

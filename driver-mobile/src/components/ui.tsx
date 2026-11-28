@@ -1,8 +1,6 @@
-import {
-  BriefcaseBusiness, Car, CarTaxiFront, Check, ChevronRight, Circle, ClipboardList, House, MapPin, Moon, Sun,
-  Truck, UserRound, Users, Bell, BatteryCharging, ShieldCheck, LogOut, Smartphone, RefreshCw, Send, Construction,
-  type LucideIcon,
-} from 'lucide-react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle,
@@ -11,19 +9,110 @@ import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { font, radius, useTheme } from '../theme';
 
-const ICONS: Record<string, LucideIcon> = {
-  home: House, taxi: CarTaxiFront, carpool: Users, requests: ClipboardList, vehicles: Car, profile: UserRound,
-  next: ChevronRight, check: Check, pin: MapPin, sun: Sun, moon: Moon, bell: Bell, battery: BatteryCharging,
-  shield: ShieldCheck, logout: LogOut, phone: Smartphone, refresh: RefreshCw, send: Send, truck: Truck,
-  work: BriefcaseBusiness, equipment: Construction,
+/**
+ * iOS uslubidagi ikonkalar (Ionicons — SF Symbols'ga o'xshash to'la/kontur juftliklari).
+ * Ionicons'da yuk mashinasi va ekskavator yo'q — ular MaterialCommunityIcons'dan (shakli mos).
+ * [to'plam, to'la, kontur, burilish]
+ */
+type Glyph = readonly ['ion' | 'mci', string, string, number?];
+const ICONS: Record<string, Glyph> = {
+  home: ['ion', 'home', 'home-outline'],
+  taxi: ['ion', 'car-sport', 'car-sport-outline'],
+  carpool: ['ion', 'people', 'people-outline'],
+  requests: ['ion', 'reader', 'reader-outline'],
+  orders: ['ion', 'receipt', 'receipt-outline'],
+  vehicles: ['ion', 'car', 'car-outline'],
+  profile: ['ion', 'person-circle', 'person-circle-outline'],
+  next: ['ion', 'chevron-forward', 'chevron-forward'],
+  back: ['ion', 'chevron-back', 'chevron-back'],
+  chevDown: ['ion', 'chevron-down', 'chevron-down'],
+  check: ['ion', 'checkmark', 'checkmark'],
+  pin: ['ion', 'location', 'location-outline'],
+  sun: ['ion', 'sunny', 'sunny-outline'],
+  moon: ['ion', 'moon', 'moon-outline'],
+  bell: ['ion', 'notifications', 'notifications-outline'],
+  battery: ['ion', 'battery-charging', 'battery-charging-outline'],
+  shield: ['ion', 'shield-checkmark', 'shield-checkmark-outline'],
+  logout: ['ion', 'log-out', 'log-out-outline'],
+  phone: ['ion', 'phone-portrait', 'phone-portrait-outline'],
+  refresh: ['ion', 'refresh', 'refresh'],
+  send: ['ion', 'paper-plane', 'paper-plane-outline'],
+  truck: ['mci', 'truck', 'truck-outline'],
+  work: ['ion', 'briefcase', 'briefcase-outline'],
+  briefcase: ['ion', 'briefcase', 'briefcase-outline'],
+  equipment: ['mci', 'excavator', 'excavator'],
+  call: ['ion', 'call', 'call-outline'],
+  star: ['ion', 'star', 'star-outline'],
+  close: ['ion', 'close', 'close'],
+  search: ['ion', 'search', 'search'],
+  nav: ['ion', 'navigate', 'navigate-outline'],
+  clock: ['ion', 'time', 'time-outline'],
+  history: ['ion', 'time', 'time-outline'],
+  cash: ['ion', 'cash', 'cash-outline'],
+  card: ['ion', 'card', 'card-outline'],
+  locate: ['ion', 'locate', 'locate-outline'],
+  repeat: ['ion', 'repeat', 'repeat'],
+  plus: ['ion', 'add', 'add'],
+  download: ['ion', 'download', 'download-outline'],
+  arrowUR: ['ion', 'arrow-forward', 'arrow-forward', -45],
+  map: ['ion', 'map', 'map-outline'],
+  sparkles: ['ion', 'sparkles', 'sparkles-outline'],
 };
-
 export type IconName = keyof typeof ICONS;
 
-export function Icon({ n, size = 20, color, stroke = 2 }: { n: string; size?: number; color?: string; stroke?: number }) {
+/** Ikonka shriftlari — splash yopilishidan oldin yuklanadi (aks holda bir lahza bo'sh joy ko'rinadi) */
+export const ICON_FONTS = { ...Ionicons.font, ...MaterialCommunityIcons.font };
+
+/** `outline` — kontur varianti (masalan, tanlanmagan menyu bandi). `stroke` eski API uchun qoldirilgan. */
+export function Icon({ n, size = 20, color, outline }: { n: string; size?: number; color?: string; stroke?: number; outline?: boolean }) {
   const t = useTheme();
-  const C = ICONS[n] ?? Circle;
-  return <C size={size} color={color ?? t.text} strokeWidth={stroke} />;
+  const [set, filled, line, rotate] = ICONS[n] ?? (['ion', 'ellipse', 'ellipse-outline'] as const);
+  const name = outline ? line : filled;
+  const c = color ?? t.text;
+  const glyph = set === 'mci'
+    ? <MaterialCommunityIcons name={name as any} size={size} color={c} />
+    : <Ionicons name={name as any} size={size} color={c} />;
+  return rotate ? <View style={{ transform: [{ rotate: `${rotate}deg` }] }}>{glyph}</View> : glyph;
+}
+
+/**
+ * "Liquid glass" yuzasi: shaffof fon + yuqoridan tushgan yorug'lik (gradient) + yorug' chekka.
+ * Haqiqiy blur ishlatilmaydi — Android 7–11 va arzon telefonlarda sekinlashtiradi; ko'rinishi baribir shishaga o'xshaydi.
+ */
+export function Glass({ children, style, rounded = 24, strong, onColor }: {
+  children?: ReactNode; style?: StyleProp<ViewStyle>; rounded?: number; strong?: boolean;
+  /** rangli fon (bordo sarlavha, sariq karta) ustidagi oq shisha */
+  onColor?: boolean;
+}) {
+  const t = useTheme();
+  const bg = onColor ? 'rgba(255,255,255,0.16)' : strong ? t.glassStrong : t.glass;
+  return (
+    <View style={[{ borderRadius: rounded, backgroundColor: bg, borderColor: onColor ? 'rgba(255,255,255,0.38)' : t.glassEdge,
+      borderWidth: 1, overflow: 'hidden' }, style]}>
+      <LinearGradient pointerEvents="none" colors={onColor ? ON_COLOR_SHEEN : t.glassSheen} locations={[0, 0.45, 1]}
+        style={StyleSheet.absoluteFill} />
+      {children}
+    </View>
+  );
+}
+
+const ON_COLOR_SHEEN = ['rgba(255,255,255,0.34)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.1)'] as const;
+
+/** Rangli shisha "tabletka" ichidagi ikonka (iOS Sozlamalar uslubi) */
+export function GlassIcon({ n, size = 36, color, ink = '#fff', iconSize }: {
+  n: string; size?: number; color?: string; ink?: string; iconSize?: number;
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ width: size, height: size, borderRadius: size * 0.32, backgroundColor: color ?? t.primary,
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' }}>
+      <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.42)', 'rgba(255,255,255,0.06)', 'rgba(0,0,0,0.08)']}
+        locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: size * 0.18, right: size * 0.18, height: 1,
+        backgroundColor: 'rgba(255,255,255,0.75)' }} />
+      <Icon n={n} size={iconSize ?? Math.round(size * 0.55)} color={ink} />
+    </View>
+  );
 }
 
 type TextKind = 'title' | 'h2' | 'body' | 'muted' | 'small' | 'label';
@@ -113,11 +202,7 @@ export function Row({ icon, title, subtitle, right, onPress, tint }: {
   const t = useTheme();
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.6 }]}>
-      {icon ? (
-        <View style={[s.rowIcon, { backgroundColor: tint ?? t.primarySoft }]}>
-          <Icon n={icon} size={18} color={tint ? '#fff' : t.primary} />
-        </View>
-      ) : null}
+      {icon ? <GlassIcon n={icon} size={34} color={tint ?? t.primary} iconSize={18} /> : null}
       <View style={{ flex: 1, gap: 2 }}>
         <T>{title}</T>
         {subtitle ? <T kind="small">{subtitle}</T> : null}
@@ -141,12 +226,9 @@ export function Badge({ text, tone = 'neutral' }: { text: string; tone?: 'neutra
 }
 
 export function Empty({ icon = 'work', title, text }: { icon?: string; title: string; text?: string }) {
-  const t = useTheme();
   return (
     <View style={{ alignItems: 'center', gap: 10, paddingVertical: 40, paddingHorizontal: 24 }}>
-      <View style={[s.emptyIcon, { backgroundColor: t.primarySoft }]}>
-        <Icon n={icon} size={30} color={t.primary} />
-      </View>
+      <GlassIcon n={icon} size={68} iconSize={32} />
       <T kind="h2" style={{ textAlign: 'center' }}>{title}</T>
       {text ? <T kind="muted" style={{ textAlign: 'center' }}>{text}</T> : null}
     </View>
@@ -171,8 +253,6 @@ const s = StyleSheet.create({
   btn: { height: 52, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   btnText: { fontFamily: font.bold, fontSize: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
 
 /** Ichki ekranlar uchun sarlavha: "‹ Orqaga" + nom */
