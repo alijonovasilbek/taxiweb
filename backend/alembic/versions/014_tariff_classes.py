@@ -39,7 +39,7 @@ def upgrade() -> None:
             ('ekonom',  'Ekonom',  5000,  1500, 200, 10000, 4, 1, 1, 'Arzon va tez'),
             ('komfort', 'Komfort', 7000,  1900, 250, 13000, 4, 2, 2, 'Yangiroq va keng mashina'),
             ('biznes',  'Biznes',  12000, 3000, 400, 22000, 4, 3, 3, 'Premium mashina'),
-            ('miniven', 'Miniven', 9000,  2300, 300, 16000, 6, 2, 4, '6 o''rinli, yuk uchun joy')
+            ('miniven', 'Miniven', 9000,  2300, 300, 16000, 6, 2, 4, 'Katta oila va yuk uchun')
         ) AS v(code, name, base, km, min, minfare, seats, level, sort, descr)
         WHERE NOT EXISTS (SELECT 1 FROM tariffs t WHERE t.code = v.code)
     """)
