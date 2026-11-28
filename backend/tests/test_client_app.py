@@ -181,3 +181,21 @@ def test_route_marks_straight_line_as_approx(client):
         assert r["approx"] is True and len(r["polyline"]) == 2 and r["distance_km"] > 0
     finally:
         settings.osrm_url, y.OSRM_FALLBACKS, settings.yandex_router_api_key = old_url, old_fb, old_key
+
+
+def test_own_order_not_offered_to_self(client):
+    """Bitta akkaunt ham yo'lovchi, ham haydovchi: o'z buyurtmasi o'ziga taklif qilinmaydi (aks holda
+    qabul qilish 409 beradi va 15 soniyadan keyin "Haydovchi topilmadi" chiqadi)."""
+    from app.services.matching_service import find_drivers_expanding
+
+    where = {"lat": CLI["lat"] + 0.05, "lng": CLI["lng"] + 0.05}
+    tokens, _ = _login(client, "client")
+    me = run(client.get("/api/users/me", headers=_bearer(tokens))).json()
+    driver_id = run(_taxi_driver(me["id"], me["telegram_id"], where))
+
+    async def nearest(exclude):
+        async with database.pool.acquire() as conn:
+            return [d["id"] for d in await find_drivers_expanding(conn, where["lat"], where["lng"], exclude)]
+
+    assert driver_id in run(nearest(None))
+    assert driver_id not in run(nearest(me["id"]))

@@ -69,7 +69,7 @@ async def _dispatch(conn: asyncpg.Connection, order: dict):
     await asyncio.sleep(0)
     order_id = order["id"]
     async with pool.acquire() as c:
-        drivers = await find_drivers_expanding(c, order["pickup_lat"], order["pickup_lng"])
+        drivers = await find_drivers_expanding(c, order["pickup_lat"], order["pickup_lng"], order["passenger_id"])
         passenger = await c.fetchrow("SELECT * FROM users WHERE id=$1", order["passenger_id"])
     order_data = _order_payload(order, passenger)
     ev = _offer_events.setdefault(order_id, asyncio.Event())

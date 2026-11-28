@@ -234,6 +234,8 @@ def test_equipment_flow_and_provider_withdraw(client):
     assert len(sched) == 6 and sched[0]["start_time"] == "08:00"
 
     when = (datetime.now() + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+    if when.weekday() == 6:  # jadval Du–Sha; shanba kuni ishga tushirilsa "ertaga" yakshanba bo'lib qolardi
+        when += timedelta(days=1)
     r = run(client.post("/api/requests", headers=h(client_u), json={
         "service_type": "equipment", "vehicle_category": "excavator", "work_volume": "Poydevor qazish 40 m3",
         "duration_value": 4, "duration_unit": "hour", "from": {"address": "Chortoq, Yangi mahalla", **CHORTOQ},
