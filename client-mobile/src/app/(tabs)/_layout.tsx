@@ -1,15 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { qk } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
-import { Icon } from '../../components/ui';
+import { TabBar } from '../../components/ui';
 import { askNotifications, notifyIfBackground } from '../../lib/notify';
 import { useAuth } from '../../store/auth';
-import { font, useTheme } from '../../theme';
+import { useTheme } from '../../theme';
 
 /** Socket hodisasi → ma'lumotni yangilash va (ilova fonda bo'lsa) bildirishnoma */
 const TAXI_EVENTS: Record<string, [string, string, boolean] | null> = {
@@ -79,41 +77,18 @@ type BarProps = {
   navigateToTab: (routeKey: string) => void;
 };
 
-/** Dizayndagi pastki menyu: oq panel, faol bo'lim ikonkasi bordo tusli "tabletka" ichida */
+/** Apple uslubidagi suzuvchi shisha menyu (components/ui TabBar); yashirin bo'limlar ko'rinmaydi */
 function BottomBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
-  const t = useTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[bar.bar, { backgroundColor: t.tabBar, borderTopColor: t.line, paddingBottom: insets.bottom }]}>
-      {state.routes.map((r, i) => {
-        if (!TAB_ICONS[r.name]) return null;
-        const on = state.index === i;
-        const title = descriptors[r.key]?.options.title ?? r.name;
-        return (
-          <Pressable
-            key={r.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            onPress={() => {
-              const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
-              if (!on && !ev.defaultPrevented) navigateToTab(r.key);
-            }}
-            style={bar.item}
-          >
-            <View style={[bar.pill, on && { backgroundColor: t.primarySoft }]}>
-              <Icon n={TAB_ICONS[r.name]} size={on ? 21 : 22} color={on ? t.primary : t.muted} filled={on} />
-            </View>
-            <Text numberOfLines={1} style={[bar.label, { color: on ? t.text : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{title}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <TabBar items={state.routes.filter((r) => TAB_ICONS[r.name]).map((r) => {
+      const on = state.routes[state.index]?.key === r.key;
+      return {
+        key: r.key, title: descriptors[r.key]?.options.title ?? r.name, icon: TAB_ICONS[r.name], on,
+        onPress: () => {
+          const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+          if (!on && !ev.defaultPrevented) navigateToTab(r.key);
+        },
+      };
+    })} />
   );
 }
-
-const bar = StyleSheet.create({
-  bar: { flexDirection: 'row', borderTopWidth: 1, paddingHorizontal: 8 },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, height: 76 },
-  pill: { width: 52, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 12 },
-});

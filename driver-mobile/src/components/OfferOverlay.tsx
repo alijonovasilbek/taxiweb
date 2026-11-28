@@ -9,7 +9,7 @@ import { api, ApiError } from '../api/client';
 import { qk } from '../api/hooks';
 import { useOffer, type Offer } from '../store/offer';
 import { font, useTheme } from '../theme';
-import { Button, Icon, RouteCard, T, money } from './ui';
+import { Button, Icon, RouteCard, SwipeButton, T, money } from './ui';
 
 const PAYMENT: Record<string, string> = { cash: 'Naqd pul', click: 'Click', payme: 'Payme', telegram: 'Telegram' };
 const R = 28;
@@ -116,12 +116,10 @@ function OfferBody({ offer }: { offer: Offer & { expiresAt: number } }) {
 
             {note ? <T color={t.redInk}>{note}</T> : null}
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Button title="O‘tkazish" kind="secondary" loading={busy === 'reject'} disabled={!!busy} onPress={reject}
-                style={{ width: 120, height: 60, borderRadius: 18 }} />
-              <Button title="Qabul qilish" loading={busy === 'accept'} disabled={!!busy || !!note} onPress={accept}
-                style={{ flex: 1, height: 60, borderRadius: 18 }} />
-            </View>
+            {/* Qabul — chapdan o'ngga surib (cho'ntakda tasodifan bosilib ketmasin) */}
+            <SwipeButton title="Qabul qilish uchun suring" loading={busy === 'accept'} disabled={!!busy || !!note} onSwipe={accept} />
+            <Button title="O‘tkazib yuborish" kind="ghost" loading={busy === 'reject'} disabled={!!busy} onPress={reject}
+              style={{ height: 44 }} />
           </View>
         </SafeAreaView>
       </View>

@@ -6,12 +6,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../api/client';
 import { ACTIVE_STATUSES, qk, useOrder, type TaxiOrder } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
+import { CancelSheet } from '../../components/CancelSheet';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../../components/MapView';
 import { Avatar, Button, ErrorNote, Grabber, Icon, IconTile, MapFab, money, Plate, RouteCard, T } from '../../components/ui';
 import { PAYMENT } from '../../lib/format';
@@ -113,24 +114,14 @@ export default function Ride() {
     }
   }, [o, sheetH]);
 
-  const cancel = () =>
-    Alert.alert('Buyurtmani bekor qilasizmi?', status === 'searching' ? '' : 'Haydovchi allaqachon yo‘lda.', [
-      { text: "Yo'q", style: 'cancel' },
-      {
-        text: 'Bekor qilish', style: 'destructive', onPress: async () => {
-          setBusy(true);
-          try {
-            await api(`/orders/${orderId}/cancel`, { method: 'PUT', body: { reason: "Yo'lovchi bekor qildi" } });
-            void qc.invalidateQueries({ queryKey: qk.activeOrder });
-            router.replace('/(tabs)');
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Bekor qilib bo'lmadi");
-          } finally {
-            setBusy(false);
-          }
-        },
-      },
-    ]);
+  // Bekor qilish — sabab tanlanadi (analitika uchun kod bilan saqlanadi)
+  const [cancelling, setCancelling] = useState(false);
+  const cancel = async (code: string, text: string | null) => {
+    await api(`/orders/${orderId}/cancel`, { method: 'PUT', body: { reason_code: code, reason: text } });
+    setCancelling(false);
+    void qc.invalidateQueries({ queryKey: qk.activeOrder });
+    router.replace('/(tabs)');
+  };
 
   const retry = async () => {
     if (!o) return;
@@ -252,7 +243,7 @@ export default function Ride() {
                 <Text style={[s.footMain, { color: t.text }]}>{price} · {payText}</Text>
               </View>
               {['searching', 'accepted', 'driver_arrived'].includes(status) ? (
-                <Pressable onPress={busy ? undefined : cancel} style={[s.cancel, { backgroundColor: t.redSoft }]}>
+                <Pressable onPress={busy ? undefined : () => setCancelling(true)} style={[s.cancel, { backgroundColor: t.redSoft }]}>
                   {busy ? <ActivityIndicator color={t.redInk} /> : <Text style={[s.cancelText, { color: t.redInk }]}>Bekor qilish</Text>}
                 </Pressable>
               ) : null}
@@ -263,6 +254,8 @@ export default function Ride() {
           {bad ? <Button title="Asosiy sahifa" kind="secondary" onPress={leave} /> : null}
         </ScrollView>
       </View>
+      <CancelSheet role="passenger" visible={cancelling} onClose={() => setCancelling(false)} onConfirm={cancel}
+        note={status === 'searching' ? undefined : 'Haydovchi allaqachon yo‘lda.'} />
     </View>
   );
 }

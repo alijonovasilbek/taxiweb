@@ -2,17 +2,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { Redirect, Tabs } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, AppState } from 'react-native';
 
 import { qk, useProviderHome } from '../../api/hooks';
 import { getSocket } from '../../api/socket';
 import { OfferOverlay } from '../../components/OfferOverlay';
-import { Icon, money } from '../../components/ui';
+import { money, TabBar } from '../../components/ui';
 import { getItem, setItem } from '../../lib/storage';
 import { useAuth } from '../../store/auth';
 import { useOffer, type Offer } from '../../store/offer';
-import { font, useTheme } from '../../theme';
+import { useTheme } from '../../theme';
 
 /** Bosh sahifa ma'lumotini yangilaydigan real vaqt hodisalari */
 const REFRESH_EVENTS = ['notification', 'new_order_timeout', 'ride_completed', 'request:new', 'driver:offline_timeout'];
@@ -96,8 +95,8 @@ export default function TabsLayout() {
         tabBar={(props) => <BottomBar {...(props as unknown as BarProps)} />}
         screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.bg } }}
       >
-        <Tabs.Screen name="index" options={tab(hasTaxi ? 'Daromad' : 'Bosh')} />
         <Tabs.Screen name="taxi" options={tab('Xarita', hasTaxi)} />
+        <Tabs.Screen name="index" options={tab(hasTaxi ? 'Daromad' : 'Bosh')} />
         <Tabs.Screen name="carpool" options={tab('Qatnovlar', sections.includes('carpool'))} />
         <Tabs.Screen name="requests" options={tab("So'rovlar", sections.includes('requests'))} />
         <Tabs.Screen name="vehicles" options={tab('Transport')} />
@@ -116,44 +115,24 @@ type BarProps = {
   navigateToTab: (routeKey: string) => void;
 };
 
-/** Dizayndagi pastki menyu: oq panel, faol bo'lim ikonkasi bordo "tabletka" ichida; yashirin bo'limlar (href: null) ko'rinmaydi */
+/** Apple uslubidagi suzuvchi shisha menyu; yashirin bo'limlar (href: null) ko'rinmaydi */
 function BottomBar({ state, descriptors, emitter, navigateToTab }: BarProps) {
-  const t = useTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[bar.bar, { backgroundColor: t.tabBar, borderTopColor: t.line, paddingBottom: insets.bottom }]}>
-      {state.routes.map((r, i) => {
-        const opts = descriptors[r.key]?.options;
-        if (opts?.href === null) return null;
-        const on = state.index === i;
-        const icon = r.name === 'index' ? (opts?.title === 'Daromad' ? 'chart' : 'home') : TAB_ICONS[r.name] ?? 'home';
-        return (
-          <Pressable
-            key={r.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            onPress={() => {
-              const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
-              if (!on && !ev.defaultPrevented) navigateToTab(r.key);
-            }}
-            style={bar.item}
-          >
-            <View style={[bar.pill, on && { backgroundColor: t.primary }]}>
-              <Icon n={icon} size={on ? 20 : 22} color={on ? t.onPrimary : t.muted} filled={on} />
-            </View>
-            <Text numberOfLines={1} style={[bar.label, { color: on ? t.text : t.muted, fontFamily: on ? font.bold : font.semibold }]}>{opts?.title ?? r.name}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <TabBar items={state.routes.filter((r) => descriptors[r.key]?.options.href !== null).map((r) => {
+      const on = state.routes[state.index]?.key === r.key;
+      return {
+        key: r.key, title: descriptors[r.key]?.options.title ?? r.name, icon: TAB_ICONS[r.name] ?? 'home', on,
+        onPress: () => {
+          const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+          if (!on && !ev.defaultPrevented) navigateToTab(r.key);
+        },
+      };
+    })} />
   );
 }
 
-const TAB_ICONS: Record<string, string> = { taxi: 'map', carpool: 'carpool', requests: 'requests', vehicles: 'vehicles', profile: 'profile' };
+const TAB_ICONS: Record<string, string> = {
+  index: 'chart', taxi: 'map', carpool: 'carpool', requests: 'requests', vehicles: 'vehicles', profile: 'profile',
+};
 
-const bar = StyleSheet.create({
-  bar: { flexDirection: 'row', borderTopWidth: 1, paddingHorizontal: 6 },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, height: 76 },
-  pill: { width: 52, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 11 },
-});
+

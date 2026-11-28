@@ -40,6 +40,10 @@ const light = {
   grabber: '#d9d9d4',
   shadow: 'rgba(0,0,0,0.14)',
   sheet: '#ffffff',
+  // Liquid glass (pastki menyu): shaffof oq + yorug'lik gradienti + yorug' chekka
+  glass: 'rgba(255,255,255,0.82)',
+  glassEdge: 'rgba(255,255,255,0.95)',
+  glassSheen: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.35)', 'rgba(255,255,255,0.6)'] as readonly [string, string, string],
 };
 
 const dark: typeof light = {
@@ -77,6 +81,9 @@ const dark: typeof light = {
   grabber: '#3a3a37',
   shadow: 'rgba(0,0,0,0.5)',
   sheet: '#1b1b1a',
+  glass: 'rgba(32,32,30,0.82)',
+  glassEdge: 'rgba(255,255,255,0.14)',
+  glassSheen: ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.06)'] as readonly [string, string, string],
 };
 
 export type Theme = typeof light;

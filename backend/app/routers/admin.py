@@ -237,6 +237,18 @@ async def daily_report(admin=Depends(get_admin_user), conn: asyncpg.Connection =
     return [dict(r) for r in rows]
 
 
+@router.get("/reports/cancellations")
+async def cancellations_report(days: int = Query(30, ge=1, le=365), admin=Depends(get_admin_user),
+                               conn: asyncpg.Connection = Depends(get_db)):
+    """Bekor qilish sabablari: kim (yo'lovchi/haydovchi) va qaysi sabab bilan, oxirgi N kun."""
+    from app.services import cancel_reasons
+    rows = await conn.fetch(
+        """SELECT COALESCE(cancelled_by,'system') AS cancelled_by, cancel_reason_code AS code, COUNT(*) AS count
+           FROM orders WHERE status='cancelled' AND cancelled_at >= NOW() - make_interval(days => $1)
+           GROUP BY 1, 2 ORDER BY count DESC""", days)
+    return [{**dict(r), "label": cancel_reasons.label(r["cancelled_by"], r["code"]) or "Sababsiz (eski ilova)"} for r in rows]
+
+
 @router.get("/reports/weekly")
 async def weekly_report(admin=Depends(get_admin_user), conn: asyncpg.Connection = Depends(get_db)):
     rows = await conn.fetch(

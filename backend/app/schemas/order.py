@@ -28,4 +28,5 @@ class RouteEstimateRequest(BaseModel):
 
 
 class CancelOrderRequest(BaseModel):
-    reason: Optional[str] = "Bekor qilindi"
+    reason: Optional[str] = "Bekor qilindi"  # erkin matn ("Boshqa sabab" izohi yoki eski ilovalar)
+    reason_code: Optional[str] = None  # app/services/cancel_reasons.py dagi kod (analitika)

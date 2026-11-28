@@ -9,6 +9,8 @@ from app.services.pricing_service import estimate_price, tariff_public
 from app.socket_manager import sio
 import asyncpg
 
+from app.services import cancel_reasons
+
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
@@ -48,6 +50,12 @@ async def create(body: CreateOrderRequest, user=Depends(get_current_user), conn:
         tariff=tariff,
     )
     return {**order, "estimated_price": price, "route": route, "tariff": tariff_public(tariff)}
+
+
+@router.get("/cancel-reasons")
+async def get_cancel_reasons(role: str = "passenger"):
+    """Bekor qilish sabablari ro'yxati (ilovalar shu tartibda ko'rsatadi)."""
+    return [{"code": k, "label": v} for k, v in cancel_reasons.BY_ROLE.get(role, cancel_reasons.PASSENGER).items()]
 
 
 @router.get("/active")
@@ -188,7 +196,12 @@ async def cancel(order_id: int, body: CancelOrderRequest, as_driver: bool = Fals
                  conn: asyncpg.Connection = Depends(get_db)):
     # Yagona akkauntda haydovchi tomonidan bekor qilish: ?as_driver=true
     cancelled_by = "driver" if (user.get("role") == "driver" or as_driver) else "passenger"
-    reason = body.reason or "Bekor qilindi"
+    code = body.reason_code
+    if code is not None and not cancel_reasons.label(cancelled_by, code):
+        raise HTTPException(400, "Noma'lum bekor qilish sababi")
+    # Matn: sabab nomi; "Boshqa sabab"da — foydalanuvchi izohi
+    custom = (body.reason or "").strip()[:200]
+    reason = (custom if code == "other" and custom and custom != "Bekor qilindi" else cancel_reasons.label(cancelled_by, code))         if code else (custom or "Bekor qilindi")
 
     if cancelled_by == "driver":
         driver = await conn.fetchrow("SELECT id FROM drivers WHERE telegram_id=$1", user.get("telegram_id"))
@@ -196,22 +209,22 @@ async def cancel(order_id: int, body: CancelOrderRequest, as_driver: bool = Fals
             raise HTTPException(404, "Driver not found")
         row = await conn.fetchrow(
             """UPDATE orders
-               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2
+               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2, cancel_reason_code=$4, cancelled_by='driver'
                WHERE id=$1
                  AND driver_id=$3
                  AND status IN ('accepted','driver_arrived')
                RETURNING driver_id, passenger_id""",
-            order_id, reason, driver["id"],
+            order_id, reason, driver["id"], code,
         )
     else:
         row = await conn.fetchrow(
             """UPDATE orders
-               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2
+               SET status='cancelled', cancelled_at=NOW(), cancel_reason=$2, cancel_reason_code=$4, cancelled_by='passenger'
                WHERE id=$1
                  AND passenger_id=$3
                  AND status IN ('searching','accepted','driver_arrived')
                RETURNING driver_id, passenger_id""",
-            order_id, reason, user["id"],
+            order_id, reason, user["id"], code,
         )
 
     if not row:

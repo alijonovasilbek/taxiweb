@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Linking, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { useAppVersion, useEarnings, useProviderHome, type Earnings } from '../../api/hooks';
@@ -29,6 +29,17 @@ export default function Home() {
   );
   const offline = error instanceof ApiError && error.status === 0;
   const earn = useEarnings(!!data?.taxi);
+  // Daromad sukut bo'yicha yashirin: telefon ekrani yo'lovchiga ko'rinib qolishi mumkin
+  const [show, setShow] = useState(false);
+  const cash = (v: number | string | null | undefined) => (show ? money(v) : "••• ••• so'm");
+
+  // Taksi haydovchisi ilovani ochganda birinchi — Xarita (bir marta, keyin bu bo'limga bemalol kiriladi)
+  useEffect(() => {
+    if (data?.taxi && !openedMap) {
+      openedMap = true;
+      router.navigate('/taxi');
+    }
+  }, [data?.taxi, router]);
 
   const hour = new Date().getHours();
   const greet = hour < 5 ? 'Xayrli tun' : hour < 12 ? 'Xayrli tong' : hour < 18 ? 'Xayrli kun' : 'Xayrli kech';
@@ -41,17 +52,17 @@ export default function Home() {
           <Text style={[s.greet, { color: t.muted }]}>{greet}, {data?.user.first_name ?? '…'}</Text>
           <T kind="title">{data?.taxi ? 'Daromad' : 'Bosh sahifa'}</T>
         </View>
-        {data?.taxi ? (
-          <View style={[s.period, { borderColor: t.line, backgroundColor: t.card }]}>
-            <Text style={[s.periodText, { color: t.text }]}>Shu hafta</Text>
-          </View>
-        ) : null}
+        <Pressable onPress={() => setShow(!show)} hitSlop={6} accessibilityLabel={show ? 'Daromadni yashirish' : "Daromadni ko'rsatish"}
+          style={[s.period, { borderColor: t.line, backgroundColor: t.card }]}>
+          <Icon n={show ? 'eyeOff' : 'eye'} size={18} color={t.text} />
+          <Text style={[s.periodText, { color: t.text }]}>{show ? 'Yashirish' : "Ko'rsatish"}</Text>
+        </Pressable>
       </View>
 
-      {data?.taxi && earn.data ? <EarningsCard e={earn.data} /> : (
+      {data?.taxi && earn.data ? <EarningsCard e={earn.data} cash={cash} /> : (
         <View style={[s.dark, { backgroundColor: t.ink }]}>
           <Text style={s.darkLabel}>Bugungi daromad</Text>
-          <Text style={[s.darkValue, { color: t.onInk }]}>{money(data?.earnings_today)}</Text>
+          <Text style={[s.darkValue, { color: t.onInk }]}>{cash(data?.earnings_today)}</Text>
         </View>
       )}
 
@@ -74,7 +85,7 @@ export default function Home() {
                   {new Date(r.completed_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}{r.tariff_name ? ` · ${r.tariff_name}` : ''}
                 </Text>
               </View>
-              <Text style={[s.tripPrice, { color: t.text }]}>{Math.round(Number(r.final_price || 0)).toLocaleString('ru-RU').replace(/,/g, ' ')}</Text>
+              <Text style={[s.tripPrice, { color: t.text }]}>{show ? Math.round(Number(r.final_price || 0)).toLocaleString('ru-RU').replace(/,/g, ' ') : '•••'}</Text>
             </View>
           ))}
         </View>
@@ -182,19 +193,20 @@ export default function Home() {
   );
 }
 
+let openedMap = false;
 const DAYS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const short = (a: string) => (a || '').split(',')[0];
 const fmtOnline = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} s ${m % 60} d` : `${m} d`);
 
 /** Qora karta: bugungi daromad va oxirgi 7 kun ustunlari (bugungisi bordo) */
-function EarningsCard({ e }: { e: Earnings }) {
+function EarningsCard({ e, cash }: { e: Earnings; cash: (v: number) => string }) {
   const t = useTheme();
   const max = Math.max(1, ...e.week.map((d) => d.total));
   return (
     <View style={[s.dark, { backgroundColor: t.ink }]}>
       <View style={{ gap: 4 }}>
         <Text style={[s.darkLabel, { color: t.scheme === 'dark' ? '#5f5f5f' : '#cfcfcf' }]}>Bugungi daromad</Text>
-        <Text style={[s.darkValue, { color: t.onInk }]}>{money(e.today_earnings)}</Text>
+        <Text style={[s.darkValue, { color: t.onInk }]}>{cash(e.today_earnings)}</Text>
       </View>
       <View style={s.bars}>
         {e.week.map((d, i) => {
@@ -225,7 +237,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   greet: { fontFamily: font.medium, fontSize: 14 },
-  period: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },
+  period: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   periodText: { fontFamily: font.semibold, fontSize: 14 },
   dark: { borderRadius: 24, padding: 20, gap: 18 },
   darkLabel: { fontFamily: font.medium, fontSize: 14, color: '#cfcfcf' },

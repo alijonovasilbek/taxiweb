@@ -14,7 +14,7 @@ import {
   recentPlaces, useActiveOrder, useBookings, useCatalog, useHere, useMe, useMyRequests, useRides, useUnread, type SavedPlace,
 } from '../../api/hooks';
 import { MapWarmup } from '../../components/MapView';
-import { Badge, Icon, IconTile, T } from '../../components/ui';
+import { Badge, Icon, IconTile, T, TAB_SPACE } from '../../components/ui';
 import { BOOKING_STATUS, fmtDateTime, greeting, ORDER_STATUS, REQUEST_STATUS } from '../../lib/format';
 import { font, useTheme } from '../../theme';
 
@@ -60,7 +60,7 @@ export default function Home() {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 20, paddingHorizontal: 16, paddingBottom: 24, gap: 14 }}
+        contentContainerStyle={{ paddingTop: insets.top + 20, paddingHorizontal: 16, paddingBottom: 24 + TAB_SPACE, gap: 14 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[t.primary]} progressViewOffset={insets.top} />}
         showsVerticalScrollIndicator={false}
       >

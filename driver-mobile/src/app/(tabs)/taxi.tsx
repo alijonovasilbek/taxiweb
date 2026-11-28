@@ -6,13 +6,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '../../api/client';
-import { qk, useDriverActive, useEarnings, useProviderHome, type TaxiOrder } from '../../api/hooks';
+import { qk, useDriverActive, useProviderHome, type TaxiOrder } from '../../api/hooks';
+import { CancelSheet } from '../../components/CancelSheet';
 import { MapView, type LatLng, type MapHandle, type MapMarker } from '../../components/MapView';
-import { Avatar, Button, Card, Empty, ErrorNote, Icon, IconTile, MapFab, RouteCard, Screen, T, money } from '../../components/ui';
+import { Avatar, Button, Card, Empty, ErrorNote, Icon, IconTile, MapFab, RouteCard, Screen, T, TAB_SPACE, money } from '../../components/ui';
 import { BOT_URL } from '../../config';
 import { callPhone, openNavigator } from '../../lib/navigator';
 import { goOffline, goOnline, syncTracking } from '../../lib/taxi';
@@ -31,7 +32,6 @@ export default function Taxi() {
   const qc = useQueryClient();
   const home = useProviderHome();
   const active = useDriverActive();
-  const earnings = useEarnings(!!home.data?.taxi);
   const me = useQuery({ queryKey: ['driver-me'], queryFn: () => api<{ tariff_name?: string }>('/drivers/me'), enabled: !!home.data?.taxi });
   const map = useRef<MapHandle>(null);
   const [here, setHere] = useState<LatLng | null>(null);
@@ -75,7 +75,7 @@ export default function Taxi() {
     }
   }, [here, order]);
   useEffect(() => {
-    if (cardH) map.current?.margin(cardH + 12);
+    if (cardH) map.current?.margin(cardH + 12 + TAB_SPACE);
   }, [cardH]);
 
   // Faol safar: marshrut (olib ketish → manzil) va hammasini ko'rinishga sig'dirish
@@ -86,7 +86,7 @@ export default function Taxi() {
   useEffect(() => {
     if (!order || routeFor.current === order.id) return;
     routeFor.current = order.id;
-    setTimeout(() => map.current?.fit(cardH + 40), 400);
+    setTimeout(() => map.current?.fit(cardH + 40 + TAB_SPACE), 400);
     api<{ polyline?: { lat: number; lng: number }[]; approx?: boolean }>('/maps/route', {
       query: { fromLat: num(order.pickup_lat), fromLng: num(order.pickup_lng), toLat: num(order.dropoff_lat), toLng: num(order.dropoff_lng) },
     })
@@ -150,17 +150,20 @@ export default function Taxi() {
           )}
           <Text style={[s.pillText, { color: t.text }]}>{online ? 'Liniyada' : 'Oflayn'}</Text>
         </Pressable>
-        <View style={[s.pill, { backgroundColor: t.ink, paddingHorizontal: 16 }]}>
-          <Text style={[s.pillSub, { color: t.scheme === 'dark' ? '#5f5f5f' : '#cfcfcf' }]}>Bugun</Text>
-          <Text style={[s.pillText, { color: t.onInk }]}>{money(earnings.data?.today_earnings ?? home.data?.earnings_today)}</Text>
-        </View>
+        {/* Daromad bu yerda ko'rsatilmaydi — ekran yo'lovchiga ko'rinadi; faqat reyting */}
+        {taxi ? (
+          <View style={[s.pill, { backgroundColor: t.card, paddingLeft: 14 }]}>
+            <Icon n="star" filled size={16} color={t.primary} />
+            <Text style={[s.pillText, { color: t.text }]}>{Number(taxi.rating || 5).toFixed(1).replace('.', ',')}</Text>
+          </View>
+        ) : null}
       </SafeAreaView>
 
       {here ? (
-        <MapFab icon="locate" onPress={() => map.current?.center(here, 16)} style={[s.locate, { bottom: cardH + 24 }]} />
+        <MapFab icon="locate" onPress={() => map.current?.center(here, 16)} style={[s.locate, { bottom: cardH + 24 + TAB_SPACE }]} />
       ) : null}
 
-      <View onLayout={(e) => setCardH(Math.round(e.nativeEvent.layout.height))} style={[s.card, { backgroundColor: t.card }]}>
+      <View onLayout={(e) => setCardH(Math.round(e.nativeEvent.layout.height))} style={[s.card, { backgroundColor: t.card, bottom: 12 + TAB_SPACE }]}>
         <ScrollView contentContainerStyle={{ gap: 14 }} showsVerticalScrollIndicator={false} bounces={false}>
           {home.data?.phone_required ? (
             <View style={{ gap: 10 }}>
@@ -222,22 +225,13 @@ function ActiveRide({ order, onDone, onChanged }: { order: TaxiOrder; onDone: (o
     }
   };
 
-  const cancel = () =>
-    Alert.alert('Buyurtmani bekor qilish', "Yo'lovchiga xabar boradi. Tez-tez bekor qilish reytingga ta'sir qiladi.", [
-      { text: 'Yo‘q', style: 'cancel' },
-      {
-        text: 'Bekor qilish',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api(`/orders/${order.id}/cancel`, { method: 'PUT', query: { as_driver: true }, body: { reason: 'Haydovchi bekor qildi' } });
-          } catch (e) {
-            setError(e instanceof Error ? e.message : 'Xatolik');
-          }
-          onChanged();
-        },
-      },
-    ]);
+  // Bekor qilish — sabab tanlanadi (analitika); xato bo'lsa varaqda ko'rsatiladi
+  const [cancelling, setCancelling] = useState(false);
+  const cancel = async (code: string, text: string | null) => {
+    await api(`/orders/${order.id}/cancel`, { method: 'PUT', query: { as_driver: true }, body: { reason_code: code, reason: text } });
+    setCancelling(false);
+    onChanged();
+  };
 
   return (
     <View style={{ gap: 14 }}>
@@ -269,7 +263,9 @@ function ActiveRide({ order, onDone, onChanged }: { order: TaxiOrder; onDone: (o
         {step?.next ? <Button title={step.next.label} loading={busy} onPress={next} style={{ flex: 1 }} /> : null}
       </View>
       <ErrorNote error={error} />
-      {order.status !== 'in_progress' ? <Button title="Bekor qilish" kind="ghost" onPress={cancel} style={{ height: 44 }} /> : null}
+      {order.status !== 'in_progress' ? <Button title="Bekor qilish" kind="ghost" onPress={() => setCancelling(true)} style={{ height: 44 }} /> : null}
+      <CancelSheet role="driver" visible={cancelling} onClose={() => setCancelling(false)} onConfirm={cancel}
+        note="Yo'lovchiga xabar boradi. Tez-tez bekor qilish reytingga ta'sir qiladi." />
     </View>
   );
 }
@@ -320,7 +316,7 @@ const s = StyleSheet.create({
   switch: { width: 36, height: 22, borderRadius: 11 },
   knob: { position: 'absolute', top: 3, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff' },
   locate: { position: 'absolute', right: 16 },
-  card: { position: 'absolute', left: 12, right: 12, bottom: 12, maxHeight: '70%', borderRadius: 28, padding: 20, elevation: 12,
+  card: { position: 'absolute', left: 12, right: 12, maxHeight: '62%', borderRadius: 28, padding: 20, elevation: 12,
     shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 32, shadowOffset: { width: 0, height: 8 } },
   h: { fontFamily: font.heavy, fontSize: 18 },
   sub: { fontFamily: font.medium, fontSize: 13 },

@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { ReactNode } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle,
+  ActivityIndicator, Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, View,
+  type StyleProp, type TextStyle, type ViewStyle,
 } from 'react-native';
-import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 
 import { font, radius, useTheme } from '../theme';
 
@@ -56,6 +58,9 @@ const ICONS: Record<string, Glyph> = {
   plus: ['ion', 'add', 'add'],
   download: ['ion', 'download', 'download-outline'],
   arrowUR: ['ion', 'arrow-forward', 'arrow-forward', -45],
+  chevRight2: ['ion', 'chevron-forward', 'chevron-forward'],
+  eye: ['ion', 'eye', 'eye-outline'],
+  eyeOff: ['ion', 'eye-off', 'eye-off-outline'],
   map: ['ion', 'map', 'map-outline'],
   chart: ['ion', 'bar-chart', 'bar-chart-outline'],
   sliders: ['ion', 'options', 'options-outline'],
@@ -118,7 +123,7 @@ export function Screen({ children, scroll = true, edges = ['top'], padded = true
   children: ReactNode; scroll?: boolean; edges?: Edge[]; padded?: boolean; refresh?: ReactNode;
 }) {
   const t = useTheme();
-  const inner = padded ? { padding: 16, paddingTop: 20, paddingBottom: 32, gap: 12 } : undefined;
+  const inner = padded ? { padding: 16, paddingTop: 20, paddingBottom: 32 + TAB_SPACE, gap: 12 } : undefined;
   return (
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: t.bg }}>
       {scroll ? (
@@ -306,12 +311,104 @@ export function Avatar({ name, size = 52 }: { name?: string | null; size?: numbe
   );
 }
 
+/** Pastki menyu balandligi (kapsula + chekinish) — ekranlar kontentini shuncha yuqoridan tugatadi */
+export const TAB_SPACE = 100;
+
+export type TabItem = { key: string; title: string; icon: string; on: boolean; onPress: () => void };
+
+/**
+ * Apple uslubidagi pastki menyu: ekran ustida suzib turuvchi "liquid glass" kapsula,
+ * faol bo'lim — yumaloq (kapsula) fon ichida to'la ikonka.
+ */
+export function TabBar({ items }: { items: TabItem[] }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View pointerEvents="box-none" style={[s.tabWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.tabBar, { backgroundColor: t.glass, borderColor: t.glassEdge, shadowColor: '#000' }]}>
+        <LinearGradient pointerEvents="none" colors={t.glassSheen} locations={[0, 0.5, 1]} style={[StyleSheet.absoluteFill, { borderRadius: 32 }]} />
+        {items.map((it) => (
+          <Pressable key={it.key} accessibilityRole="tab" accessibilityState={{ selected: it.on }} onPress={it.onPress}
+            style={[s.tabItem, it.on && { backgroundColor: t.primarySoft }]}>
+            <Icon n={it.icon} size={22} color={it.on ? t.primary : t.muted} filled={it.on} />
+            <Text numberOfLines={1} style={[s.tabLabel, { color: it.on ? t.primary : t.muted, fontFamily: it.on ? font.bold : font.semibold }]}>
+              {it.title}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * "Surib tasdiqlash": tutqichni chapdan o'ngga oxirigacha surish kerak (tasodifiy bosilib ketmasin).
+ * Oxiriga yetmasa — joyiga qaytadi.
+ */
+export function SwipeButton({ title, onSwipe, disabled, loading }: {
+  title: string; onSwipe: () => void; disabled?: boolean; loading?: boolean;
+}) {
+  const t = useTheme();
+  const [width, setWidth] = useState(0);
+  const [x] = useState(() => new Animated.Value(0));
+  const max = Math.max(0, width - KNOB - 8);
+  // Joriy qiymatlar ishlov beruvchilarga ref orqali (render paytida emas — effektda yangilanadi)
+  const state = useRef({ max: 0, off: false, cb: onSwipe });
+  useEffect(() => {
+    state.current = { max, off: !!disabled || !!loading, cb: onSwipe };
+  });
+
+  // Ishlov beruvchilar ref'ni faqat tegilganda o'qiydi (render paytida emas)
+  // eslint-disable-next-line react-hooks/refs
+  const [pan] = useState(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => !state.current.off,
+    onMoveShouldSetPanResponder: (_e, g) => !state.current.off && Math.abs(g.dx) > 4,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: (_e, g) => x.setValue(Math.min(Math.max(0, g.dx), state.current.max)),
+    onPanResponderRelease: (_e, g) => {
+      const m = state.current.max;
+      if (m > 0 && g.dx >= m * 0.85) {
+        Animated.timing(x, { toValue: m, duration: 120, useNativeDriver: true }).start(() => {
+          state.current.cb();
+          setTimeout(() => x.setValue(0), 600);
+        });
+      } else {
+        Animated.spring(x, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+      }
+    },
+    onPanResponderTerminate: () => Animated.spring(x, { toValue: 0, useNativeDriver: true }).start(),
+  }));
+
+  const fade = max ? x.interpolate({ inputRange: [0, max * 0.6], outputRange: [1, 0], extrapolate: 'clamp' }) : 1;
+  return (
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={[s.swipe, { backgroundColor: disabled ? t.fill : t.primary }]}>
+      <Animated.Text style={[s.swipeText, { color: disabled ? t.faint : t.onPrimary, opacity: fade }]} numberOfLines={1}>
+        {title}
+      </Animated.Text>
+      <Animated.View {...pan.panHandlers} style={[s.knob, { transform: [{ translateX: x }] }]}>
+        {loading ? <ActivityIndicator color={t.primary} /> : <Icon n="chevRight2" size={26} color={t.primary} />}
+      </Animated.View>
+    </View>
+  );
+}
+const KNOB = 52;
+
 const s = StyleSheet.create({
   btn: { height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   btnText: { fontFamily: font.bold, fontSize: 17 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   fab: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
   plate: { fontFamily: font.heavy, fontSize: 17, letterSpacing: 0.4 },
+  tabWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16 },
+  tabBar: { flexDirection: 'row', height: 64, borderRadius: 32, borderWidth: 1, padding: 6, gap: 4, elevation: 10,
+    shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  tabItem: { flex: 1, borderRadius: 26, alignItems: 'center', justifyContent: 'center', gap: 1 },
+  tabLabel: { fontSize: 11 },
+  swipe: { height: 60, borderRadius: 30, justifyContent: 'center', padding: 4, overflow: 'hidden' },
+  swipeText: { position: 'absolute', left: 64, right: 20, textAlign: 'center', fontFamily: font.heavy, fontSize: 17 },
+  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    elevation: 3, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6 },
 });
 
 /** Ichki ekranlar uchun sarlavha: "‹" doira tugma + nom */

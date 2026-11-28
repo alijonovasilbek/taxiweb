@@ -7,10 +7,12 @@ const fmtDay = (v) => new Date(v).toLocaleDateString('uz-UZ');
 export default function Reports() {
   const [daily, setDaily] = useState([]);
   const [weekly, setWeekly] = useState([]);
+  const [cancels, setCancels] = useState([]);
 
   useEffect(() => {
     api.get('/reports/daily').then(({ data }) => setDaily(data)).catch(() => {});
     api.get('/reports/weekly').then(({ data }) => setWeekly(data)).catch(() => {});
+    api.get('/reports/cancellations', { params: { days: 30 } }).then(({ data }) => setCancels(data)).catch(() => {});
   }, []);
 
   const revenue = (v) => <b style={{ color: 'var(--primary)' }}>{fmtMoney(v)}</b>;
@@ -40,6 +42,18 @@ export default function Reports() {
           { title: 'Jami buyurtma', render: (w) => <b>{w.total_orders}</b> },
           { title: 'Tugadi', render: (w) => done(w.completed) },
           { title: 'Daromad', render: (w) => revenue(w.revenue) },
+        ]}
+      />
+
+      <h3 className="card-title" style={{ marginTop: 28 }}>Bekor qilish sabablari (30 kun)</h3>
+      <Table
+        rows={cancels}
+        empty="Bekor qilingan buyurtma yo'q"
+        columns={[
+          { title: 'Kim', render: (c) => ({ passenger: "Yo'lovchi", driver: 'Haydovchi' }[c.cancelled_by] || 'Tizim') },
+          { title: 'Sabab', render: (c) => c.label },
+          { title: 'Soni', render: (c) => <b>{c.count}</b> },
+          { title: 'Ulushi', render: (c) => `${Math.round((c.count / Math.max(1, cancels.reduce((a, x) => a + x.count, 0))) * 100)}%` },
         ]}
       />
     </div>
